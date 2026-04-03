@@ -69,7 +69,7 @@ jobs:
       - name: Package binary
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/aegis dist/${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/aegis-scan dist/${{ matrix.artifact }}
           chmod +x dist/${{ matrix.artifact }}
           cd dist && shasum -a 256 ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
 
