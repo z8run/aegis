@@ -9,7 +9,7 @@ const NPM_REGISTRY: &str = "https://registry.npmjs.org";
 /// registry.
 fn http_client() -> Result<Client> {
     Client::builder()
-        .user_agent("aegis-cli/0.1.0")
+        .user_agent("aegis-cli/0.3.0")
         .build()
         .context("failed to build HTTP client")
 }

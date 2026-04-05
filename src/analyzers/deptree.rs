@@ -76,7 +76,7 @@ impl DepTreeAnalyzer {
 
     async fn scan_tree(&self, name: &str, version: &str, max_depth: usize) -> Result<Vec<Finding>> {
         let client = Client::builder()
-            .user_agent("aegis-cli/0.1.0")
+            .user_agent("aegis-cli/0.3.0")
             .build()
             .context("failed to build HTTP client")?;
 

@@ -91,24 +91,28 @@ aegis-scan check axios --no-cache        # bypass cache for this check
 
 ## What it detects
 
-13 analyzers run on every package:
+11 analyzers run on every package, plus 2 optional:
 
 | Analyzer | Description |
 |---|---|
-| **Static code** | `eval()`, `child_process`, network exfiltration, env harvesting via regex |
-| **AST analysis** | tree-sitter parsing for JS/TS/TSX — structural detection of dangerous patterns |
-| **Anti-evasion** | String concatenation tricks (`'ev'+'al'`), bracket notation (`global['eval']`), base64-encoded function names (`atob('ZXZhbA==')`), indirect eval (`(0,eval)`), and variable aliasing |
+| **Static code** | `eval()`, `child_process`, network exfiltration, env harvesting via regex. Includes anti-evasion: bracket notation (`global['eval']`), base64 function names, indirect eval (`(0,eval)`) |
+| **AST analysis** | tree-sitter parsing for JS/TS/TSX — structural detection of dangerous patterns, string concatenation tricks (`'ev'+'al'`), variable aliasing |
 | **Binary inspection** | Scans `.wasm`, `.node`, `.exe`, `.dll`, `.so` files; extracts strings to find embedded URLs, shell commands, and credential patterns; measures entropy for packed/encrypted payloads |
-| **Data flow analysis** | Lightweight taint tracking for multi-step attack patterns: env exfiltration (`process.env` -> encode -> network send), dropper patterns (download -> write -> execute), credential theft (`.npmrc`/`.ssh` -> network) |
+| **Data flow analysis** | Lightweight taint tracking for multi-step attack patterns: env exfiltration, dropper patterns (download -> write -> execute), credential theft (`.npmrc`/`.ssh` -> network) |
 | **Provenance verification** | Compares npm tarball contents against the GitHub source repo; detects injected files not in source; checks for npm Sigstore provenance attestations |
 | **Install scripts** | Suspicious `postinstall`/`preinstall` commands |
-| **Obfuscation** | High entropy, hex/base64 payloads, encoded strings, multiline `/* */` comment stripping to reduce false positives |
+| **Obfuscation** | High entropy, hex/base64 payloads, encoded strings, multiline comment stripping to reduce false positives |
 | **Maintainer tracking** | Ownership transfers, new accounts, takeovers |
-| **AI hallucination** | Packages that LLMs "invent" — a growing attack vector |
-| **Typosquatting** | Normalized Levenshtein distance, plugin/extension whitelist, homoglyph detection |
+| **AI hallucination & typosquatting** | Packages that LLMs "invent", normalized Levenshtein distance, plugin/extension whitelist, homoglyph detection |
 | **CVE lookup** | Known vulnerabilities via OSV.dev |
-| **Dependency tree** | Recursive scan of transitive dependencies |
 | **YAML rules** | 10 built-in rules + custom community rules |
+
+Optional (flag-activated):
+
+| Analyzer | Flag | Description |
+|---|---|---|
+| **Dependency tree** | `--deep` | Recursive scan of transitive dependencies |
+| **Version diff** | `--compare <version>` | Compare against a previous version for security-relevant changes |
 
 ### Security hardening
 
