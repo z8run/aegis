@@ -1,9 +1,9 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use regex::Regex;
 
 use crate::analyzers::Analyzer;
-use crate::types::Finding;
+use crate::types::{AnalysisContext, Finding};
 
 use super::loader::Rule;
 
@@ -100,15 +100,15 @@ impl RulesEngine {
 }
 
 impl Analyzer for RulesEngine {
-    fn analyze(
-        &self,
-        files: &[(PathBuf, String)],
-        _package_json: &serde_json::Value,
-    ) -> Vec<Finding> {
+    fn name(&self) -> &str {
+        "rules"
+    }
+
+    fn analyze(&self, ctx: &AnalysisContext) -> Vec<Finding> {
         let mut findings = Vec::new();
 
         for cr in &self.compiled {
-            for (path, content) in files {
+            for (path, content) in ctx.files {
                 let path_str = path.to_string_lossy();
 
                 // Check file_pattern.
@@ -145,7 +145,21 @@ impl Analyzer for RulesEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use crate::rules::loader::load_default_rules;
+    use crate::registry::package::PackageMetadata;
+
+    fn default_metadata() -> PackageMetadata {
+        PackageMetadata {
+            name: Some("test-pkg".into()),
+            description: None,
+            versions: std::collections::HashMap::new(),
+            time: std::collections::HashMap::new(),
+            maintainers: None,
+            dist_tags: None,
+            extra: std::collections::HashMap::new(),
+        }
+    }
 
     #[test]
     fn engine_matches_eval_base64() {
@@ -155,7 +169,17 @@ mod tests {
             r#"var x = eval(Buffer.from("dGVzdA==", "base64").toString());"#.to_string(),
         )];
         let pkg = serde_json::Value::Object(serde_json::Map::new());
-        let findings = engine.analyze(&files, &pkg);
+        let metadata = default_metadata();
+        let tmp = Path::new("/tmp");
+        let ctx = AnalysisContext {
+            name: "test-pkg",
+            version: "1.0.0",
+            files: &files,
+            package_json: &pkg,
+            metadata: &metadata,
+            package_dir: tmp,
+        };
+        let findings = engine.analyze(&ctx);
         assert!(!findings.is_empty(), "should detect eval + Buffer.from");
         assert!(findings[0].title.contains("AEGIS-001"));
     }
@@ -168,7 +192,17 @@ mod tests {
             r#"var x = eval(Buffer.from("dGVzdA==", "base64").toString());"#.to_string(),
         )];
         let pkg = serde_json::Value::Object(serde_json::Map::new());
-        let findings = engine.analyze(&files, &pkg);
+        let metadata = default_metadata();
+        let tmp = Path::new("/tmp");
+        let ctx = AnalysisContext {
+            name: "test-pkg",
+            version: "1.0.0",
+            files: &files,
+            package_json: &pkg,
+            metadata: &metadata,
+            package_dir: tmp,
+        };
+        let findings = engine.analyze(&ctx);
         // AEGIS-001 excludes *.min.js
         let aegis001: Vec<_> = findings
             .iter()
@@ -185,7 +219,17 @@ mod tests {
             r#"eval(Buffer.from("dGVzdA==", "base64"))"#.to_string(),
         )];
         let pkg = serde_json::Value::Object(serde_json::Map::new());
-        let findings = engine.analyze(&files, &pkg);
+        let metadata = default_metadata();
+        let tmp = Path::new("/tmp");
+        let ctx = AnalysisContext {
+            name: "test-pkg",
+            version: "1.0.0",
+            files: &files,
+            package_json: &pkg,
+            metadata: &metadata,
+            package_dir: tmp,
+        };
+        let findings = engine.analyze(&ctx);
         let aegis001: Vec<_> = findings
             .iter()
             .filter(|f| f.title.contains("AEGIS-001"))

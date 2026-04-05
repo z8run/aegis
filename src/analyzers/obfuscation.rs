@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use regex::Regex;
 
-use crate::types::{Finding, FindingCategory, Severity};
+use crate::types::{AnalysisContext, Finding, FindingCategory, Severity};
 
 use super::{truncate, Analyzer};
 
@@ -60,18 +59,18 @@ fn shannon_entropy(s: &str) -> f64 {
 pub struct ObfuscationAnalyzer;
 
 impl Analyzer for ObfuscationAnalyzer {
-    fn analyze(
-        &self,
-        files: &[(PathBuf, String)],
-        _package_json: &serde_json::Value,
-    ) -> Vec<Finding> {
+    fn name(&self) -> &str {
+        "obfuscation"
+    }
+
+    fn analyze(&self, ctx: &AnalysisContext) -> Vec<Finding> {
         let mut findings = Vec::new();
 
         let hex_re = re_long_hex();
         let b64_re = re_long_base64();
         let esc_re = re_hex_escapes();
 
-        for (path, content) in files {
+        for (path, content) in ctx.files {
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
             // Only scan JS/TS/JSON files

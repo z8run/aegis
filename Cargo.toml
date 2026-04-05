@@ -41,7 +41,6 @@ colored = "2"
 
 # Error handling
 anyhow = "1"
-thiserror = "2"
 
 # Regex for pattern matching
 regex = "1"

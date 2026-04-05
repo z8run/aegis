@@ -8,7 +8,7 @@ use crate::cache;
 use crate::registry;
 use crate::rules;
 use crate::scoring;
-use crate::types::AnalysisReport;
+use crate::types::{AnalysisContext, AnalysisReport};
 
 use registry::tarball;
 use rules::loader::load_default_rules;
@@ -101,7 +101,17 @@ pub async fn analyze_package(
         serde_json::Value::Object(serde_json::Map::new())
     };
 
-    // 5. Run all analyzers.
+    // 5. Build analysis context.
+    let ctx = AnalysisContext {
+        name,
+        version: resolved_version,
+        files: &files,
+        package_json: &package_json,
+        metadata: &metadata,
+        package_dir: &package_dir,
+    };
+
+    // 6. Run all trait-based analyzers.
     let mut all_rules = load_default_rules();
     if let Some(rules_dir) = custom_rules_dir {
         match rules::loader::load_rules(rules_dir) {
@@ -117,43 +127,30 @@ pub async fn analyze_package(
         Box::new(analyzers::ast::AstAnalyzer),
         Box::new(analyzers::dataflow::DataFlowAnalyzer),
         Box::new(rules::engine::RulesEngine::new(all_rules)),
+        Box::new(analyzers::binary::BinaryAnalyzer),
+        Box::new(analyzers::maintainer::MaintainerAnalyzer),
+        Box::new(analyzers::hallucination::HallucinationAnalyzer::new()),
     ];
 
     let mut findings = Vec::new();
     for a in &all_analyzers {
-        findings.extend(a.analyze(&files, &package_json));
+        findings.extend(a.analyze(&ctx));
     }
 
-    // Run binary file analyzer (works on raw filesystem, not text pipeline).
-    let binary_analyzer = analyzers::binary::BinaryAnalyzer;
-    findings.extend(binary_analyzer.analyze_directory(&package_dir));
-
-    // Run metadata-based analyzers (not trait-based).
-    let maintainer_analyzer = analyzers::maintainer::MaintainerAnalyzer;
-    findings.extend(maintainer_analyzer.analyze(&metadata));
-
-    let hallucination_analyzer = analyzers::hallucination::HallucinationAnalyzer::new();
-    findings.extend(hallucination_analyzer.analyze(&metadata));
-
-    // Run CVE checker (async).
+    // Run async analyzers separately (cannot be trait objects due to async).
     let cve_checker = analyzers::cve::CveChecker::new();
-    findings.extend(cve_checker.check(name, resolved_version).await);
+    findings.extend(cve_checker.check_ctx(&ctx).await);
 
-    // Run provenance verification (async — compares npm tarball vs GitHub source).
     let provenance_analyzer = analyzers::provenance::ProvenanceAnalyzer::new();
-    findings.extend(
-        provenance_analyzer
-            .analyze(&files, &package_json, &metadata, resolved_version)
-            .await,
-    );
+    findings.extend(provenance_analyzer.analyze_ctx(&ctx).await);
 
     // Sort findings by severity (most critical first).
     findings.sort_by(|a, b| b.severity.cmp(&a.severity));
 
-    // 6. Build report.
+    // 7. Build report.
     let report = calculator::build_report(name, resolved_version, findings);
 
-    // 7. Store in cache.
+    // 8. Store in cache.
     if use_cache {
         if let Err(e) = cache::save_cache(&report) {
             tracing::warn!("failed to save cache: {:#}", e);

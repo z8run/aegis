@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
-use crate::types::{Finding, FindingCategory, Severity};
+use crate::types::{AnalysisContext, Finding, FindingCategory, Severity};
 
 use super::{truncate, Analyzer};
 
@@ -40,11 +40,13 @@ fn re_node_file() -> &'static Regex {
 pub struct InstallScriptAnalyzer;
 
 impl Analyzer for InstallScriptAnalyzer {
-    fn analyze(
-        &self,
-        files: &[(PathBuf, String)],
-        package_json: &serde_json::Value,
-    ) -> Vec<Finding> {
+    fn name(&self) -> &str {
+        "install-scripts"
+    }
+
+    fn analyze(&self, ctx: &AnalysisContext) -> Vec<Finding> {
+        let files = ctx.files;
+        let package_json = ctx.package_json;
         let mut findings = Vec::new();
 
         let scripts = match package_json.get("scripts").and_then(|v| v.as_object()) {

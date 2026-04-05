@@ -7,7 +7,9 @@
 use chrono::Utc;
 
 use crate::registry::package::PackageMetadata;
-use crate::types::{Finding, FindingCategory, Severity};
+use crate::types::{AnalysisContext, Finding, FindingCategory, Severity};
+
+use super::Analyzer;
 
 /// Top popular npm packages used for Levenshtein distance comparison.
 const TOP_PACKAGES: &[&str] = &[
@@ -229,10 +231,7 @@ impl HallucinationAnalyzer {
     }
 
     /// Analyse a `PackageMetadata` and return findings.
-    ///
-    /// This does **not** implement the `Analyzer` trait because it operates on
-    /// registry metadata rather than extracted file contents.
-    pub fn analyze(&self, metadata: &PackageMetadata) -> Vec<Finding> {
+    pub fn analyze_metadata(&self, metadata: &PackageMetadata) -> Vec<Finding> {
         let mut findings: Vec<Finding> = Vec::new();
 
         let pkg_name = metadata.name.as_deref().unwrap_or("");
@@ -466,6 +465,16 @@ impl HallucinationAnalyzer {
         }
 
         findings
+    }
+}
+
+impl Analyzer for HallucinationAnalyzer {
+    fn name(&self) -> &str {
+        "hallucination"
+    }
+
+    fn analyze(&self, ctx: &AnalysisContext) -> Vec<Finding> {
+        self.analyze_metadata(ctx.metadata)
     }
 }
 

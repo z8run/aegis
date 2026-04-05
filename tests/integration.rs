@@ -3,7 +3,8 @@
 //! These tests exercise the full analyzer pipeline, scoring system, output
 //! formatters, cache, and rules engine without making any network calls.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::collections::HashMap;
 
 use aegis_scan::analyzers::ast::AstAnalyzer;
 use aegis_scan::analyzers::install_scripts::InstallScriptAnalyzer;
@@ -11,16 +12,29 @@ use aegis_scan::analyzers::obfuscation::ObfuscationAnalyzer;
 use aegis_scan::analyzers::static_code::StaticCodeAnalyzer;
 use aegis_scan::analyzers::Analyzer;
 use aegis_scan::output::sarif::generate_sarif;
+use aegis_scan::registry::package::PackageMetadata;
 use aegis_scan::rules::engine::RulesEngine;
 use aegis_scan::rules::loader::{load_default_rules, load_rules};
 use aegis_scan::scoring::calculator::{build_report, calculate_risk};
 use aegis_scan::types::{
-    AnalysisReport, Finding, FindingCategory, RiskLabel, Severity,
+    AnalysisContext, AnalysisReport, Finding, FindingCategory, RiskLabel, Severity,
 };
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+fn default_metadata() -> PackageMetadata {
+    PackageMetadata {
+        name: Some("test-pkg".into()),
+        description: None,
+        versions: HashMap::new(),
+        time: HashMap::new(),
+        maintainers: None,
+        dist_tags: None,
+        extra: HashMap::new(),
+    }
+}
 
 /// Run all trait-based (non-network) analyzers on the given files and
 /// package.json, returning the collected findings.
@@ -37,9 +51,20 @@ fn run_all_analyzers(
         Box::new(RulesEngine::new(rules)),
     ];
 
+    let metadata = default_metadata();
+    let tmp = Path::new("/tmp");
+    let ctx = AnalysisContext {
+        name: "test-pkg",
+        version: "1.0.0",
+        files,
+        package_json,
+        metadata: &metadata,
+        package_dir: tmp,
+    };
+
     let mut findings = Vec::new();
     for a in &analyzers {
-        findings.extend(a.analyze(files, package_json));
+        findings.extend(a.analyze(&ctx));
     }
     findings
 }
@@ -455,7 +480,17 @@ fn rule_triggers_on_matching_file() {
         r#"var x = eval(Buffer.from("dGVzdA==", "base64").toString());"#.to_string(),
     )];
     let pkg = serde_json::json!({});
-    let findings = engine.analyze(&files, &pkg);
+    let metadata = default_metadata();
+    let tmp = Path::new("/tmp");
+    let ctx = AnalysisContext {
+        name: "test-pkg",
+        version: "1.0.0",
+        files: &files,
+        package_json: &pkg,
+        metadata: &metadata,
+        package_dir: tmp,
+    };
+    let findings = engine.analyze(&ctx);
 
     let aegis001: Vec<_> = findings
         .iter()
@@ -483,7 +518,17 @@ function safeFunction() {
         .to_string(),
     )];
     let pkg = serde_json::json!({});
-    let findings = engine.analyze(&files, &pkg);
+    let metadata = default_metadata();
+    let tmp = Path::new("/tmp");
+    let ctx = AnalysisContext {
+        name: "test-pkg",
+        version: "1.0.0",
+        files: &files,
+        package_json: &pkg,
+        metadata: &metadata,
+        package_dir: tmp,
+    };
+    let findings = engine.analyze(&ctx);
 
     assert!(
         findings.is_empty(),
@@ -502,7 +547,17 @@ fn rules_respect_file_pattern_filter() {
         r#"eval(Buffer.from("dGVzdA==", "base64").toString())"#.to_string(),
     )];
     let pkg = serde_json::json!({});
-    let findings = engine.analyze(&files, &pkg);
+    let metadata = default_metadata();
+    let tmp = Path::new("/tmp");
+    let ctx = AnalysisContext {
+        name: "test-pkg",
+        version: "1.0.0",
+        files: &files,
+        package_json: &pkg,
+        metadata: &metadata,
+        package_dir: tmp,
+    };
+    let findings = engine.analyze(&ctx);
 
     let aegis001: Vec<_> = findings
         .iter()
@@ -525,7 +580,17 @@ fn rules_respect_exclude_paths() {
         r#"eval(Buffer.from("dGVzdA==", "base64").toString())"#.to_string(),
     )];
     let pkg = serde_json::json!({});
-    let findings = engine.analyze(&files, &pkg);
+    let metadata = default_metadata();
+    let tmp = Path::new("/tmp");
+    let ctx = AnalysisContext {
+        name: "test-pkg",
+        version: "1.0.0",
+        files: &files,
+        package_json: &pkg,
+        metadata: &metadata,
+        package_dir: tmp,
+    };
+    let findings = engine.analyze(&ctx);
 
     let aegis001: Vec<_> = findings
         .iter()
@@ -564,7 +629,17 @@ exclude_paths: []
         "var x = CUSTOM_MAGIC_STRING;".to_string(),
     )];
     let pkg = serde_json::json!({});
-    let findings = engine.analyze(&files, &pkg);
+    let metadata = default_metadata();
+    let tmp_dir = Path::new("/tmp");
+    let ctx = AnalysisContext {
+        name: "test-pkg",
+        version: "1.0.0",
+        files: &files,
+        package_json: &pkg,
+        metadata: &metadata,
+        package_dir: tmp_dir,
+    };
+    let findings = engine.analyze(&ctx);
 
     assert!(
         !findings.is_empty(),

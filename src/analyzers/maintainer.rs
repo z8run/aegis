@@ -1,12 +1,10 @@
 use crate::registry::package::{Maintainer, PackageMetadata};
-use crate::types::{Finding, FindingCategory, Severity};
+use crate::types::{AnalysisContext, Finding, FindingCategory, Severity};
 use std::collections::HashSet;
 
+use super::Analyzer;
+
 /// Analyzes npm package maintainer metadata for suspicious changes.
-///
-/// This analyzer works on registry metadata (not file contents), so it does
-/// **not** implement the `Analyzer` trait.  Call [`MaintainerAnalyzer::analyze`]
-/// directly with a [`PackageMetadata`] value.
 pub struct MaintainerAnalyzer;
 
 // ---------------------------------------------------------------------------
@@ -83,7 +81,7 @@ fn versions_by_time(meta: &PackageMetadata) -> Vec<(String, String)> {
 
 impl MaintainerAnalyzer {
     /// Analyze the package metadata for suspicious maintainer changes.
-    pub fn analyze(&self, metadata: &PackageMetadata) -> Vec<Finding> {
+    pub fn analyze_metadata(&self, metadata: &PackageMetadata) -> Vec<Finding> {
         let mut findings: Vec<Finding> = Vec::new();
 
         let current_maintainers = match &metadata.maintainers {
@@ -281,6 +279,16 @@ impl MaintainerAnalyzer {
     }
 }
 
+impl Analyzer for MaintainerAnalyzer {
+    fn name(&self) -> &str {
+        "maintainer"
+    }
+
+    fn analyze(&self, ctx: &AnalysisContext) -> Vec<Finding> {
+        self.analyze_metadata(ctx.metadata)
+    }
+}
+
 /// Detect email domain changes between previous and current maintainer lists.
 fn check_email_domain_changes(
     prev: &[Maintainer],
@@ -368,7 +376,7 @@ mod tests {
         let mut meta = base_metadata();
         meta.maintainers = Some(vec![make_maintainer("alice", "alice@example.com")]);
 
-        let findings = MaintainerAnalyzer.analyze(&meta);
+        let findings = MaintainerAnalyzer.analyze_metadata(&meta);
         assert!(findings
             .iter()
             .any(|f| f.severity == Severity::Low && f.title.contains("Single maintainer")));
@@ -391,7 +399,7 @@ mod tests {
         meta.time
             .insert("1.0.1".into(), "2026-03-30T00:00:00Z".into());
 
-        let findings = MaintainerAnalyzer.analyze(&meta);
+        let findings = MaintainerAnalyzer.analyze_metadata(&meta);
         assert!(findings
             .iter()
             .any(|f| f.severity == Severity::Critical && f.title.contains("ownership transfer")));
@@ -420,7 +428,7 @@ mod tests {
         meta.time
             .insert("1.0.1".into(), "2026-03-30T00:00:00Z".into());
 
-        let findings = MaintainerAnalyzer.analyze(&meta);
+        let findings = MaintainerAnalyzer.analyze_metadata(&meta);
         assert!(findings
             .iter()
             .any(|f| f.severity == Severity::Medium && f.title.contains("New maintainer added")));
@@ -443,7 +451,7 @@ mod tests {
         meta.time
             .insert("1.0.1".into(), "2026-03-30T00:00:00Z".into());
 
-        let findings = MaintainerAnalyzer.analyze(&meta);
+        let findings = MaintainerAnalyzer.analyze_metadata(&meta);
         assert!(findings
             .iter()
             .any(|f| f.severity == Severity::Medium && f.title.contains("email domain changed")));

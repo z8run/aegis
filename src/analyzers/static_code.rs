@@ -1,9 +1,8 @@
-use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use regex::Regex;
 
-use crate::types::{Finding, FindingCategory, Severity};
+use crate::types::{AnalysisContext, Finding, FindingCategory, Severity};
 
 use super::comment_strip::CommentState;
 use super::{truncate, Analyzer};
@@ -304,15 +303,15 @@ fn is_expected_pattern(path: &str, line: &str, pat: &Pattern) -> bool {
 pub struct StaticCodeAnalyzer;
 
 impl Analyzer for StaticCodeAnalyzer {
-    fn analyze(
-        &self,
-        files: &[(PathBuf, String)],
-        _package_json: &serde_json::Value,
-    ) -> Vec<Finding> {
+    fn name(&self) -> &str {
+        "static-code"
+    }
+
+    fn analyze(&self, ctx: &AnalysisContext) -> Vec<Finding> {
         let pats = patterns();
         let mut findings = Vec::new();
 
-        for (path, content) in files {
+        for (path, content) in ctx.files {
             // Only scan JS/TS files
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             if !matches!(ext, "js" | "cjs" | "mjs" | "ts" | "tsx" | "jsx") {

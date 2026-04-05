@@ -1,8 +1,6 @@
-use std::path::PathBuf;
-
 use tree_sitter::{Language, Node, Parser};
 
-use crate::types::{Finding, FindingCategory, Severity};
+use crate::types::{AnalysisContext, Finding, FindingCategory, Severity};
 
 use super::{truncate, Analyzer};
 
@@ -37,16 +35,16 @@ fn language_for_ext(ext: &str) -> Option<Language> {
 // ---------------------------------------------------------------------------
 
 impl Analyzer for AstAnalyzer {
-    fn analyze(
-        &self,
-        files: &[(PathBuf, String)],
-        _package_json: &serde_json::Value,
-    ) -> Vec<Finding> {
+    fn name(&self) -> &str {
+        "ast"
+    }
+
+    fn analyze(&self, ctx: &AnalysisContext) -> Vec<Finding> {
         let mut parser = Parser::new();
 
         let mut findings = Vec::new();
 
-        for (path, content) in files {
+        for (path, content) in ctx.files {
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             let lang = match language_for_ext(ext) {
                 Some(l) => l,
@@ -704,12 +702,53 @@ fn check_member_expression(node: Node, source: &str, file: &str, findings: &mut 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::{Path, PathBuf};
+    use crate::registry::package::PackageMetadata;
+
+    fn default_metadata() -> PackageMetadata {
+        PackageMetadata {
+            name: Some("test-pkg".into()),
+            description: None,
+            versions: std::collections::HashMap::new(),
+            time: std::collections::HashMap::new(),
+            maintainers: None,
+            dist_tags: None,
+            extra: std::collections::HashMap::new(),
+        }
+    }
 
     fn analyze_js(code: &str) -> Vec<Finding> {
         let analyzer = AstAnalyzer;
         let files = vec![(PathBuf::from("index.js"), code.to_string())];
         let pkg = serde_json::json!({});
-        analyzer.analyze(&files, &pkg)
+        let metadata = default_metadata();
+        let tmp = Path::new("/tmp");
+        let ctx = AnalysisContext {
+            name: "test-pkg",
+            version: "1.0.0",
+            files: &files,
+            package_json: &pkg,
+            metadata: &metadata,
+            package_dir: tmp,
+        };
+        analyzer.analyze(&ctx)
+    }
+
+    fn analyze_file(file_name: &str, code: &str) -> Vec<Finding> {
+        let analyzer = AstAnalyzer;
+        let files = vec![(PathBuf::from(file_name), code.to_string())];
+        let pkg = serde_json::json!({});
+        let metadata = default_metadata();
+        let tmp = Path::new("/tmp");
+        let ctx = AnalysisContext {
+            name: "test-pkg",
+            version: "1.0.0",
+            files: &files,
+            package_json: &pkg,
+            metadata: &metadata,
+            package_dir: tmp,
+        };
+        analyzer.analyze(&ctx)
     }
 
     #[test]
@@ -757,28 +796,19 @@ mod tests {
 
     #[test]
     fn detects_eval_in_ts_files() {
-        let analyzer = AstAnalyzer;
-        let files = vec![(PathBuf::from("index.ts"), "eval(x);".to_string())];
-        let pkg = serde_json::json!({});
-        let findings = analyzer.analyze(&files, &pkg);
+        let findings = analyze_file("index.ts", "eval(x);");
         assert!(!findings.is_empty(), "should detect eval in .ts files");
     }
 
     #[test]
     fn skips_non_js_ts_files() {
-        let analyzer = AstAnalyzer;
-        let files = vec![(PathBuf::from("index.py"), "eval(x);".to_string())];
-        let pkg = serde_json::json!({});
-        let findings = analyzer.analyze(&files, &pkg);
+        let findings = analyze_file("index.py", "eval(x);");
         assert!(findings.is_empty(), "should skip non-JS/TS files");
     }
 
     #[test]
     fn skips_minified_files() {
-        let analyzer = AstAnalyzer;
-        let files = vec![(PathBuf::from("bundle.min.js"), "eval(x);".to_string())];
-        let pkg = serde_json::json!({});
-        let findings = analyzer.analyze(&files, &pkg);
+        let findings = analyze_file("bundle.min.js", "eval(x);");
         assert!(findings.is_empty(), "should skip .min.js files");
     }
 

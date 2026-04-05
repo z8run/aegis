@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::types::{Finding, FindingCategory, Severity};
+use crate::types::{AnalysisContext, Finding, FindingCategory, Severity};
+
+use super::Analyzer;
 
 // ---------------------------------------------------------------------------
 // Binary file extensions
@@ -277,6 +279,16 @@ impl BinaryAnalyzer {
         }
 
         findings
+    }
+}
+
+impl Analyzer for BinaryAnalyzer {
+    fn name(&self) -> &str {
+        "binary"
+    }
+
+    fn analyze(&self, ctx: &AnalysisContext) -> Vec<Finding> {
+        self.analyze_directory(ctx.package_dir)
     }
 }
 

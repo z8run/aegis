@@ -12,20 +12,18 @@ pub mod obfuscation;
 pub mod provenance;
 pub mod static_code;
 
-use std::path::PathBuf;
-
-use crate::types::Finding;
+use crate::types::{AnalysisContext, Finding};
 
 /// Trait that all security analyzers must implement.
 ///
-/// `files` contains (path, content) tuples for every file in the package.
-/// `package_json` is the parsed package.json value.
-pub trait Analyzer {
-    fn analyze(
-        &self,
-        files: &[(PathBuf, String)],
-        package_json: &serde_json::Value,
-    ) -> Vec<Finding>;
+/// Analyzers receive an `AnalysisContext` containing all data they may need:
+/// file contents, package.json, registry metadata, and the package directory.
+pub trait Analyzer: Send + Sync {
+    /// A short, unique name for this analyzer (used in diagnostics/logging).
+    fn name(&self) -> &str;
+
+    /// Run the analysis and return any findings.
+    fn analyze(&self, ctx: &AnalysisContext) -> Vec<Finding>;
 }
 
 /// Helper: truncate a string to at most `max` characters, appending "..." if truncated.

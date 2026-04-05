@@ -232,6 +232,12 @@ impl ProvenanceAnalyzer {
         Self { client }
     }
 
+    /// Convenience method that extracts data from an `AnalysisContext`.
+    pub async fn analyze_ctx(&self, ctx: &crate::types::AnalysisContext<'_>) -> Vec<Finding> {
+        self.analyze(ctx.files, ctx.package_json, ctx.metadata, ctx.version)
+            .await
+    }
+
     /// Run the full provenance analysis.
     ///
     /// `files` are the extracted tarball contents (relative path, content).
