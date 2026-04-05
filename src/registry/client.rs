@@ -125,3 +125,65 @@ async fn fetch_version_as_metadata(
         extra: std::collections::HashMap::new(),
     })
 }
+
+/// Build the full-metadata URL for a package (testing helper).
+#[cfg(test)]
+fn build_full_metadata_url(name: &str) -> String {
+    format!("{}/{}", NPM_REGISTRY, name)
+}
+
+/// Build the single-version URL for a package (testing helper).
+#[cfg(test)]
+fn build_version_url(name: &str, version: &str) -> String {
+    let encoded = encode_package_name(name);
+    format!("{}/{}/{}", NPM_REGISTRY, encoded, version)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_simple_package_name() {
+        assert_eq!(encode_package_name("express"), "express");
+    }
+
+    #[test]
+    fn encode_scoped_package_name() {
+        assert_eq!(encode_package_name("@babel/core"), "@babel%2Fcore");
+    }
+
+    #[test]
+    fn encode_deeply_scoped_package() {
+        // Hypothetical double-slash; each slash should be encoded.
+        assert_eq!(
+            encode_package_name("@scope/sub/pkg"),
+            "@scope%2Fsub%2Fpkg"
+        );
+    }
+
+    #[test]
+    fn full_metadata_url_simple() {
+        let url = build_full_metadata_url("lodash");
+        assert_eq!(url, "https://registry.npmjs.org/lodash");
+    }
+
+    #[test]
+    fn full_metadata_url_scoped() {
+        // The full-metadata endpoint takes the raw name (including '/').
+        let url = build_full_metadata_url("@angular/core");
+        assert_eq!(url, "https://registry.npmjs.org/@angular/core");
+    }
+
+    #[test]
+    fn version_url_encodes_scoped_package() {
+        let url = build_version_url("@babel/core", "7.20.0");
+        assert_eq!(url, "https://registry.npmjs.org/@babel%2Fcore/7.20.0");
+    }
+
+    #[test]
+    fn version_url_simple_package() {
+        let url = build_version_url("express", "4.18.2");
+        assert_eq!(url, "https://registry.npmjs.org/express/4.18.2");
+    }
+}

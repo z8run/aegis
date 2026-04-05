@@ -1,6 +1,7 @@
 # aegis
 
 [![CI](https://img.shields.io/github/actions/workflow/status/z8run/aegis/quality.yml?branch=main&label=CI)](https://github.com/z8run/aegis/actions)
+[![codecov](https://codecov.io/gh/z8run/aegis/graph/badge.svg)](https://codecov.io/gh/z8run/aegis)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Supply-chain security scanner for npm packages. Detect malicious code, typosquatting, and compromised packages **before** you install them.
@@ -90,18 +91,29 @@ aegis-scan check axios --no-cache        # bypass cache for this check
 
 ## What it detects
 
+13 analyzers run on every package:
+
 | Analyzer | Description |
 |---|---|
 | **Static code** | `eval()`, `child_process`, network exfiltration, env harvesting via regex |
-| **AST analysis** | tree-sitter JS parsing for structural detection of dangerous patterns |
+| **AST analysis** | tree-sitter parsing for JS/TS/TSX — structural detection of dangerous patterns |
+| **Anti-evasion** | String concatenation tricks (`'ev'+'al'`), bracket notation (`global['eval']`), base64-encoded function names (`atob('ZXZhbA==')`), indirect eval (`(0,eval)`), and variable aliasing |
+| **Binary inspection** | Scans `.wasm`, `.node`, `.exe`, `.dll`, `.so` files; extracts strings to find embedded URLs, shell commands, and credential patterns; measures entropy for packed/encrypted payloads |
+| **Data flow analysis** | Lightweight taint tracking for multi-step attack patterns: env exfiltration (`process.env` -> encode -> network send), dropper patterns (download -> write -> execute), credential theft (`.npmrc`/`.ssh` -> network) |
+| **Provenance verification** | Compares npm tarball contents against the GitHub source repo; detects injected files not in source; checks for npm Sigstore provenance attestations |
 | **Install scripts** | Suspicious `postinstall`/`preinstall` commands |
-| **Obfuscation** | High entropy, hex/base64 payloads, encoded strings |
+| **Obfuscation** | High entropy, hex/base64 payloads, encoded strings, multiline `/* */` comment stripping to reduce false positives |
 | **Maintainer tracking** | Ownership transfers, new accounts, takeovers |
 | **AI hallucination** | Packages that LLMs "invent" — a growing attack vector |
-| **Typosquatting** | Names similar to popular packages (axois vs axios) |
+| **Typosquatting** | Normalized Levenshtein distance, plugin/extension whitelist, homoglyph detection |
 | **CVE lookup** | Known vulnerabilities via OSV.dev |
 | **Dependency tree** | Recursive scan of transitive dependencies |
 | **YAML rules** | 10 built-in rules + custom community rules |
+
+### Security hardening
+
+- **Path traversal protection** in tarball extraction (defends against zip-slip style attacks)
+- **SSRF validation** on all outbound requests
 
 ## Risk scoring
 
@@ -168,11 +180,11 @@ See [`rules/examples/`](rules/examples/) for more.
 ```
 npm registry → tarball extraction → analyzers → risk scoring → output
                                         │
-                    ┌───────────────────┼───────────────────┐
-                    │                   │                   │
-               static + AST    metadata-based    external APIs
-              (code patterns)  (maintainer,      (CVE, dep tree)
-                               hallucination)
+            ┌──────────────┬────────────┼────────────┬──────────────┐
+            │              │            │            │              │
+      static + AST    binary +     metadata     provenance    external APIs
+     (code, evasion,  data flow   (maintainer,  (source vs    (CVE, dep tree)
+      obfuscation)    (taint)     hallucination) tarball)
 ```
 
 Results are cached locally (`~/.aegis/cache/`) for 24 hours.

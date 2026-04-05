@@ -87,6 +87,99 @@ const HALLUCINATION_PATTERNS: &[&str] = &[
     "simple-utils",
 ];
 
+/// Known legitimate packages that are close in edit distance to top packages
+/// but are NOT typosquats (e.g., "reakt" is a real package).
+const KNOWN_LEGITIMATE: &[&str] = &[
+    "preact", "reakt", "rax", "inferno", "mithril", "chokidar", "chalk-cli",
+    "expressjs", "koa", "hapi", "fastify", "restify", "micro", "polka",
+    "morgan", "cors", "helmet", "pino-pretty",
+];
+
+/// Check if a package name is a known legitimate package (not a typosquat).
+fn is_known_legitimate(name: &str) -> bool {
+    KNOWN_LEGITIMATE.contains(&name)
+}
+
+/// Check if a package looks like a plugin/extension of a popular package
+/// (e.g., "react-router", "express-session").
+fn is_plugin_or_extension(name: &str, top: &str) -> bool {
+    // "react-router" is a plugin of "react"
+    if name.starts_with(&format!("{}-", top)) || name.starts_with(&format!("{}.", top)) {
+        return true;
+    }
+    // "@scope/react" or "eslint-plugin-react"
+    if name.contains(&format!("-{}", top)) && name.len() > top.len() + 5 {
+        return true;
+    }
+    false
+}
+
+/// Check for homoglyph-based typosquatting (e.g., "1odash" for "lodash").
+fn has_homoglyphs(name: &str, top: &str) -> bool {
+    if name.len() != top.len() {
+        return false;
+    }
+    let mut diff_count = 0;
+    let mut has_glyph_swap = false;
+    for (a, b) in name.chars().zip(top.chars()) {
+        if a != b {
+            diff_count += 1;
+            if diff_count > 2 {
+                return false;
+            }
+            // Check common homoglyph pairs
+            let is_homoglyph = matches!(
+                (a.to_ascii_lowercase(), b.to_ascii_lowercase()),
+                ('0', 'o') | ('o', '0') |
+                ('1', 'l') | ('l', '1') |
+                ('1', 'i') | ('i', '1') |
+                ('l', 'i') | ('i', 'l') |
+                ('m', 'n') | ('n', 'm') |
+                ('v', 'u') | ('u', 'v') |
+                ('d', 'b') | ('b', 'd') |
+                ('q', 'p') | ('p', 'q')
+            );
+            if is_homoglyph {
+                has_glyph_swap = true;
+            }
+        }
+    }
+    has_glyph_swap && diff_count <= 2
+}
+
+/// Detect specific typosquat technique used.
+fn detect_typosquat_technique(name: &str, top: &str) -> Option<String> {
+    if has_homoglyphs(name, top) {
+        return Some(format!("homoglyph substitution (looks like '{}')", top));
+    }
+
+    // Hyphen manipulation: "ex-press" vs "express"
+    let name_no_hyphen: String = name.chars().filter(|c| *c != '-').collect();
+    let top_no_hyphen: String = top.chars().filter(|c| *c != '-').collect();
+    if name_no_hyphen == top_no_hyphen && name != top {
+        return Some(format!("hyphen manipulation of '{}'", top));
+    }
+
+    // Scope-squatting: "@evil/lodash" for "lodash"
+    if name.contains('/') {
+        let bare = name.rsplit('/').next().unwrap_or("");
+        if bare == top {
+            return Some(format!("scope-squatting of '{}'", top));
+        }
+    }
+
+    None
+}
+
+/// Compute normalized Levenshtein distance (0.0 = identical, 1.0 = completely different).
+fn normalized_levenshtein(a: &str, b: &str) -> f64 {
+    let max_len = a.len().max(b.len());
+    if max_len == 0 {
+        return 0.0;
+    }
+    levenshtein(a, b) as f64 / max_len as f64
+}
+
 /// Compute the Levenshtein edit distance between two strings.
 fn levenshtein(a: &str, b: &str) -> usize {
     let a_len = a.len();
@@ -123,6 +216,12 @@ fn days_since(iso: &str) -> Option<i64> {
 
 /// Analyzer for AI-hallucinated / typosquatted package names.
 pub struct HallucinationAnalyzer;
+
+impl Default for HallucinationAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl HallucinationAnalyzer {
     pub fn new() -> Self {
@@ -223,26 +322,55 @@ impl HallucinationAnalyzer {
         }
 
         // ── HIGH: name suspiciously close to a top package ────────────
-        for &top in TOP_PACKAGES {
-            if pkg_name == top {
-                continue; // exact match means it IS the real package
-            }
-            let dist = levenshtein(pkg_name, top);
-            if dist > 0 && dist <= 2 {
-                findings.push(Finding {
-                    severity: Severity::High,
-                    category: FindingCategory::HallucinatedPackage,
-                    title: format!("Name suspiciously similar to '{}'", top),
-                    description: format!(
-                        "Package '{}' is only {} edit(s) away from the popular \
-                         package '{}'. This may be a typosquat or hallucinated variant.",
-                        pkg_name, dist, top
-                    ),
-                    file: None,
-                    line: None,
-                    snippet: None,
-                });
-                break; // one match is enough
+        if !is_known_legitimate(pkg_name) {
+            for &top in TOP_PACKAGES {
+                if pkg_name == top {
+                    continue; // exact match means it IS the real package
+                }
+
+                // Skip if this looks like a plugin/extension (e.g., "react-router")
+                if is_plugin_or_extension(pkg_name, top) {
+                    continue;
+                }
+
+                // Check for homoglyph-based typosquatting first
+                if let Some(technique) = detect_typosquat_technique(pkg_name, top) {
+                    findings.push(Finding {
+                        severity: Severity::Critical,
+                        category: FindingCategory::HallucinatedPackage,
+                        title: format!("Typosquat of '{}' detected", top),
+                        description: format!(
+                            "Package '{}' appears to be a typosquat of the popular \
+                             package '{}' via {}.",
+                            pkg_name, top, technique
+                        ),
+                        file: None,
+                        line: None,
+                        snippet: None,
+                    });
+                    break;
+                }
+
+                // Use normalized Levenshtein to reduce false positives for short names
+                let norm_dist = normalized_levenshtein(pkg_name, top);
+                let dist = levenshtein(pkg_name, top);
+                if dist > 0 && dist <= 2 && norm_dist < 0.4 {
+                    findings.push(Finding {
+                        severity: Severity::High,
+                        category: FindingCategory::HallucinatedPackage,
+                        title: format!("Name suspiciously similar to '{}'", top),
+                        description: format!(
+                            "Package '{}' is only {} edit(s) away from the popular \
+                             package '{}' (normalized distance: {:.2}). \
+                             This may be a typosquat or hallucinated variant.",
+                            pkg_name, dist, top, norm_dist
+                        ),
+                        file: None,
+                        line: None,
+                        snippet: None,
+                    });
+                    break; // one match is enough
+                }
             }
         }
 

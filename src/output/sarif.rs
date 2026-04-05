@@ -98,6 +98,9 @@ fn category_to_rule_id(category: &FindingCategory) -> String {
         FindingCategory::HallucinatedPackage => "aegis/hallucinated-package".to_string(),
         FindingCategory::KnownVulnerability => "aegis/known-vulnerability".to_string(),
         FindingCategory::DependencyRisk => "aegis/dependency-risk".to_string(),
+        FindingCategory::Provenance => "aegis/provenance".to_string(),
+        FindingCategory::BinaryFile => "aegis/binary-file".to_string(),
+        FindingCategory::DataFlow => "aegis/data-flow".to_string(),
     }
 }
 

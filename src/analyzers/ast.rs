@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tree_sitter::{Node, Parser};
+use tree_sitter::{Language, Node, Parser};
 
 use crate::types::{Finding, FindingCategory, Severity};
 
@@ -20,6 +20,19 @@ const MAX_FILE_SIZE: usize = 1_024 * 1_024;
 const DEEP_NESTING_THRESHOLD: usize = 5;
 
 // ---------------------------------------------------------------------------
+// Language selection
+// ---------------------------------------------------------------------------
+
+fn language_for_ext(ext: &str) -> Option<Language> {
+    match ext {
+        "js" | "cjs" | "mjs" => Some(tree_sitter_javascript::LANGUAGE.into()),
+        "ts" => Some(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
+        "tsx" => Some(tree_sitter_typescript::LANGUAGE_TSX.into()),
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
 
@@ -30,18 +43,15 @@ impl Analyzer for AstAnalyzer {
         _package_json: &serde_json::Value,
     ) -> Vec<Finding> {
         let mut parser = Parser::new();
-        parser
-            .set_language(&tree_sitter_javascript::LANGUAGE.into())
-            .expect("failed to load JavaScript grammar");
 
         let mut findings = Vec::new();
 
         for (path, content) in files {
-            // Only scan JS files (tree-sitter-javascript does not handle TS)
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if !matches!(ext, "js" | "cjs" | "mjs") {
-                continue;
-            }
+            let lang = match language_for_ext(ext) {
+                Some(l) => l,
+                None => continue,
+            };
 
             // Skip minified files
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -72,6 +82,10 @@ impl Analyzer for AstAnalyzer {
             if content.len() > MAX_FILE_SIZE {
                 continue;
             }
+
+            parser
+                .set_language(&lang)
+                .expect("failed to load grammar");
 
             let tree = match parser.parse(content, None) {
                 Some(t) => t,
@@ -742,12 +756,21 @@ mod tests {
     }
 
     #[test]
-    fn skips_non_js_files() {
+    fn detects_eval_in_ts_files() {
         let analyzer = AstAnalyzer;
         let files = vec![(PathBuf::from("index.ts"), "eval(x);".to_string())];
         let pkg = serde_json::json!({});
         let findings = analyzer.analyze(&files, &pkg);
-        assert!(findings.is_empty(), "should skip .ts files");
+        assert!(!findings.is_empty(), "should detect eval in .ts files");
+    }
+
+    #[test]
+    fn skips_non_js_ts_files() {
+        let analyzer = AstAnalyzer;
+        let files = vec![(PathBuf::from("index.py"), "eval(x);".to_string())];
+        let pkg = serde_json::json!({});
+        let findings = analyzer.analyze(&files, &pkg);
+        assert!(findings.is_empty(), "should skip non-JS/TS files");
     }
 
     #[test]

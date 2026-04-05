@@ -67,6 +67,12 @@ pub struct CveChecker {
     client: reqwest::Client,
 }
 
+impl Default for CveChecker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CveChecker {
     pub fn new() -> Self {
         let client = reqwest::Client::builder()
@@ -118,6 +124,11 @@ impl CveChecker {
             .into_iter()
             .map(|vuln| self.vuln_to_finding(name, version, vuln))
             .collect()
+    }
+
+    /// Convenience method that extracts name/version from an `AnalysisContext`.
+    pub async fn check_ctx(&self, ctx: &crate::types::AnalysisContext<'_>) -> Vec<Finding> {
+        self.check(ctx.name, ctx.version).await
     }
 
     /// Map a single OSV vulnerability to an Aegis `Finding`.
@@ -207,6 +218,23 @@ fn parse_cvss_score(s: &str) -> Option<f64> {
     }
     // Not a plain float — not worth fully decoding the CVSS vector here.
     None
+}
+
+/// Build a finding to surface when the OSV API itself fails.
+pub fn api_error_finding(name: &str, version: &str, error: &str) -> Finding {
+    Finding {
+        severity: Severity::Low,
+        category: FindingCategory::KnownVulnerability,
+        title: format!("OSV API error for {}@{}", name, version),
+        description: format!(
+            "Could not check {}@{} against the OSV.dev vulnerability database: {}. \
+             Manual verification is recommended.",
+            name, version, error
+        ),
+        file: None,
+        line: None,
+        snippet: None,
+    }
 }
 
 /// Truncate a string to at most `max` characters.

@@ -1,12 +1,4 @@
-mod analyzers;
-mod cache;
-mod output;
-mod registry;
-mod rules;
-mod scoring;
-mod types;
-
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -14,11 +6,17 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 
-use analyzers::Analyzer;
+use aegis_scan::analyzers::{self, Analyzer};
+use aegis_scan::cache;
+use aegis_scan::output;
+use aegis_scan::registry;
+use aegis_scan::rules;
+use aegis_scan::scoring;
+use aegis_scan::types::{AnalysisReport, Finding, RiskLabel};
+
 use registry::tarball;
 use rules::loader::load_default_rules;
 use scoring::calculator;
-use types::{AnalysisReport, RiskLabel};
 
 // ---------------------------------------------------------------------------
 // CLI definition
@@ -54,6 +52,15 @@ struct Cli {
     /// Directory containing custom YAML rule files
     #[arg(long, global = true)]
     rules: Option<PathBuf>,
+
+    /// Disable colored output (also respects NO_COLOR env var and non-TTY stdout)
+    #[arg(long, global = true)]
+    no_color: bool,
+
+    /// Ignore findings matching a rule (case-insensitive substring match on
+    /// category, title, or severity). Can be specified multiple times.
+    #[arg(long = "ignore-rule", global = true)]
+    ignore_rules: Vec<String>,
 }
 
 #[derive(Subcommand)]
@@ -145,12 +152,84 @@ fn parse_package_specifier(spec: &str) -> (String, Option<String>) {
 }
 
 // ---------------------------------------------------------------------------
+// Finding suppression (--ignore-rule and .aegisignore)
+// ---------------------------------------------------------------------------
+
+/// Parse an `.aegisignore` file into a list of rules.
+fn parse_ignore_file(content: &str) -> Vec<String> {
+    content
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|l| l.to_string())
+        .collect()
+}
+
+/// Load ignore rules from `.aegisignore` (project-local) and `~/.aegis/ignore` (global).
+fn load_ignore_files(project_dir: Option<&Path>) -> Vec<String> {
+    let mut rules = Vec::new();
+    if let Some(dir) = project_dir {
+        let local_path = dir.join(".aegisignore");
+        if let Ok(content) = std::fs::read_to_string(&local_path) {
+            rules.extend(parse_ignore_file(&content));
+        }
+    }
+    if let Some(home) = dirs::home_dir() {
+        let global_path = home.join(".aegis").join("ignore");
+        if let Ok(content) = std::fs::read_to_string(&global_path) {
+            rules.extend(parse_ignore_file(&content));
+        }
+    }
+    rules
+}
+
+/// Filter out findings matching any ignore rule (case-insensitive substring on
+/// category, title, or exact match on severity).
+fn filter_ignored(findings: Vec<Finding>, ignore_rules: &[String]) -> (Vec<Finding>, usize) {
+    if ignore_rules.is_empty() {
+        return (findings, 0);
+    }
+    let rules_lower: Vec<String> = ignore_rules.iter().map(|r| r.to_lowercase()).collect();
+    let original_count = findings.len();
+    let kept: Vec<Finding> = findings
+        .into_iter()
+        .filter(|f| {
+            let cat = f.category.to_string().to_lowercase();
+            let title = f.title.to_lowercase();
+            let sev = f.severity.to_string().to_lowercase();
+            !rules_lower
+                .iter()
+                .any(|rule| cat.contains(rule.as_str()) || title.contains(rule.as_str()) || sev == *rule)
+        })
+        .collect();
+    let ignored = original_count - kept.len();
+    (kept, ignored)
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+
+    // Disable colors when requested via flag, NO_COLOR env var, or non-TTY stdout.
+    if cli.no_color
+        || std::env::var_os("NO_COLOR").is_some()
+        || !std::io::stdout().is_terminal()
+    {
+        colored::control::set_override(false);
+    }
+
+    // Collect ignore rules from CLI flags and .aegisignore files.
+    let mut ignore_rules = cli.ignore_rules.clone();
+    let project_dir = match &cli.command {
+        Commands::Scan { path, .. } => Some(path.as_path()),
+        Commands::Install { .. } => Some(Path::new(".")),
+        _ => None,
+    };
+    ignore_rules.extend(load_ignore_files(project_dir));
 
     // Logging setup.
     let filter = if cli.verbose { "debug" } else { "warn" };
@@ -176,6 +255,7 @@ async fn main() {
                 compare.as_deref(),
                 *deep,
                 cli.rules.as_deref(),
+                &ignore_rules,
             )
             .await
         }
@@ -187,6 +267,7 @@ async fn main() {
                 cli.sarif,
                 cli.no_cache,
                 cli.rules.as_deref(),
+                &ignore_rules,
             )
             .await
         }
@@ -311,6 +392,7 @@ async fn analyze_package(
         Box::new(analyzers::install_scripts::InstallScriptAnalyzer),
         Box::new(analyzers::obfuscation::ObfuscationAnalyzer),
         Box::new(analyzers::ast::AstAnalyzer),
+        Box::new(analyzers::dataflow::DataFlowAnalyzer),
         Box::new(rules::engine::RulesEngine::new(all_rules)),
     ];
 
@@ -318,6 +400,10 @@ async fn analyze_package(
     for a in &all_analyzers {
         findings.extend(a.analyze(&files, &package_json));
     }
+
+    // Run binary file analyzer (works on raw filesystem, not text pipeline).
+    let binary_analyzer = analyzers::binary::BinaryAnalyzer;
+    findings.extend(binary_analyzer.analyze_directory(&package_dir));
 
     // Run metadata-based analyzers (not trait-based).
     let maintainer_analyzer = analyzers::maintainer::MaintainerAnalyzer;
@@ -329,6 +415,14 @@ async fn analyze_package(
     // Run CVE checker (async).
     let cve_checker = analyzers::cve::CveChecker::new();
     findings.extend(cve_checker.check(name, resolved_version).await);
+
+    // Run provenance verification (async — compares npm tarball vs GitHub source).
+    let provenance_analyzer = analyzers::provenance::ProvenanceAnalyzer::new();
+    findings.extend(
+        provenance_analyzer
+            .analyze(&files, &package_json, &metadata, resolved_version)
+            .await,
+    );
 
     // Sort findings by severity (most critical first).
     findings.sort_by(|a, b| b.severity.cmp(&a.severity));
@@ -353,6 +447,7 @@ async fn analyze_package(
 // `aegis check`
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 async fn run_check(
     package: &str,
     json_output: bool,
@@ -361,6 +456,7 @@ async fn run_check(
     compare_version: Option<&str>,
     deep: bool,
     custom_rules_dir: Option<&Path>,
+    ignore_rules: &[String],
 ) -> Result<()> {
     let (name, version) = parse_package_specifier(package);
 
@@ -451,9 +547,20 @@ async fn run_check(
         );
     }
 
+    // Apply ignore rules.
+    if !ignore_rules.is_empty() {
+        let (kept, ignored_count) = filter_ignored(report.findings, ignore_rules);
+        if ignored_count > 0 {
+            eprintln!("  {} finding(s) ignored by rules", ignored_count);
+        }
+        report = scoring::calculator::build_report(&report.package_name, &report.version, kept);
+    }
+
     if sarif_output {
         let sarif = output::sarif::generate_sarif(std::slice::from_ref(&report));
-        println!("{}", serde_json::to_string_pretty(&sarif).unwrap());
+        let sarif_str = serde_json::to_string_pretty(&sarif)
+            .context("failed to serialize SARIF output")?;
+        println!("{}", sarif_str);
     } else if json_output {
         output::json::print_json(&report);
     } else {
@@ -534,6 +641,7 @@ async fn run_scan(
     sarif_output: bool,
     no_cache: bool,
     custom_rules_dir: Option<&Path>,
+    ignore_rules: &[String],
 ) -> Result<()> {
     let deps = collect_dependencies(project_path, skip_dev)?;
     let total = deps.len();
@@ -581,6 +689,22 @@ async fn run_scan(
                 );
                 errors.push((name.clone(), format!("{:#}", e)));
             }
+        }
+    }
+
+    // Apply ignore rules to all reports.
+    if !ignore_rules.is_empty() {
+        let mut total_ignored = 0;
+        reports = reports
+            .into_iter()
+            .map(|r| {
+                let (kept, ignored) = filter_ignored(r.findings, ignore_rules);
+                total_ignored += ignored;
+                scoring::calculator::build_report(&r.package_name, &r.version, kept)
+            })
+            .collect();
+        if total_ignored > 0 {
+            eprintln!("  {} finding(s) ignored by rules", total_ignored);
         }
     }
 

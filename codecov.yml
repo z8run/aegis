@@ -1,0 +1,19 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 60%
+        threshold: 5%
+    patch:
+      default:
+        target: 70%
+
+ignore:
+  - "src/main.rs"         # CLI glue, hard to unit test
+  - "src/output/terminal.rs"  # Display formatting
+  - "tests/"              # Test code itself
+
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: true

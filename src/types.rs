@@ -1,5 +1,9 @@
-use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+use crate::registry::package::PackageMetadata;
 
 /// Severity level for a finding
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -65,6 +69,12 @@ pub enum FindingCategory {
     KnownVulnerability,
     /// Risks in the transitive dependency tree
     DependencyRisk,
+    /// Provenance verification (npm tarball vs GitHub source)
+    Provenance,
+    /// Binary/executable files detected in package
+    BinaryFile,
+    /// Multi-step data flow analysis (taint tracking)
+    DataFlow,
 }
 
 impl fmt::Display for FindingCategory {
@@ -82,6 +92,9 @@ impl fmt::Display for FindingCategory {
             FindingCategory::HallucinatedPackage => write!(f, "Hallucinated Package"),
             FindingCategory::KnownVulnerability => write!(f, "Known Vulnerability"),
             FindingCategory::DependencyRisk => write!(f, "Dependency Risk"),
+            FindingCategory::Provenance => write!(f, "Provenance"),
+            FindingCategory::BinaryFile => write!(f, "Binary File"),
+            FindingCategory::DataFlow => write!(f, "Data Flow"),
         }
     }
 }
@@ -103,6 +116,16 @@ pub enum RiskLabel {
     Medium,
     High,
     Critical,
+}
+
+/// Context passed to unified analyzers, containing all data needed for analysis.
+pub struct AnalysisContext<'a> {
+    pub name: &'a str,
+    pub version: &'a str,
+    pub files: &'a [(PathBuf, String)],
+    pub package_json: &'a serde_json::Value,
+    pub metadata: &'a PackageMetadata,
+    pub package_dir: &'a Path,
 }
 
 impl fmt::Display for RiskLabel {

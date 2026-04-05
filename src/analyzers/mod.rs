@@ -1,11 +1,15 @@
 pub mod ast;
+pub mod binary;
+pub(crate) mod comment_strip;
 pub mod cve;
+pub mod dataflow;
 pub mod deptree;
 pub mod diff;
 pub mod hallucination;
 pub mod install_scripts;
 pub mod maintainer;
 pub mod obfuscation;
+pub mod provenance;
 pub mod static_code;
 
 use std::path::PathBuf;

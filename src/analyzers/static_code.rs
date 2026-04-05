@@ -5,6 +5,7 @@ use regex::Regex;
 
 use crate::types::{Finding, FindingCategory, Severity};
 
+use super::comment_strip::CommentState;
 use super::{truncate, Analyzer};
 
 // ---------------------------------------------------------------------------
@@ -244,13 +245,10 @@ fn patterns() -> &'static [Pattern] {
 // Analyzer
 // ---------------------------------------------------------------------------
 
-/// Check if a line is a comment.
+/// Check if a line is a comment (simple heuristic for single-line comments).
 fn is_comment_line(line: &str) -> bool {
     let trimmed = line.trim_start();
-    trimmed.starts_with("//")
-        || trimmed.starts_with('*')
-        || trimmed.starts_with("/*")
-        || trimmed.starts_with('#')
+    trimmed.starts_with("//") || trimmed.starts_with('#')
 }
 
 /// Check if a pattern match is expected/benign in context.
@@ -347,17 +345,25 @@ impl Analyzer for StaticCodeAnalyzer {
                 continue;
             }
 
+            let mut comment_state = CommentState::default();
             for (line_num, line) in content.lines().enumerate() {
+                // Strip comments (block and single-line) before pattern matching.
+                let stripped = super::comment_strip::strip_comments(line, &mut comment_state);
+                let stripped = stripped.trim();
+                if stripped.is_empty() {
+                    continue;
+                }
+
                 for pat in pats {
                     let re = pat.regex.get().expect("pattern not initialised");
-                    if re.is_match(line) {
-                        // Skip comments
-                        if is_comment_line(line) {
+                    if re.is_match(stripped) {
+                        // Skip simple single-line comments
+                        if is_comment_line(stripped) {
                             continue;
                         }
 
                         // Skip expected patterns in source files
-                        if is_expected_pattern(&path_str, line, pat) {
+                        if is_expected_pattern(&path_str, stripped, pat) {
                             continue;
                         }
 
