@@ -44,9 +44,9 @@ pub fn filter_ignored(findings: Vec<Finding>, ignore_rules: &[String]) -> (Vec<F
             let cat = f.category.to_string().to_lowercase();
             let title = f.title.to_lowercase();
             let sev = f.severity.to_string().to_lowercase();
-            !rules_lower
-                .iter()
-                .any(|rule| cat.contains(rule.as_str()) || title.contains(rule.as_str()) || sev == *rule)
+            !rules_lower.iter().any(|rule| {
+                cat.contains(rule.as_str()) || title.contains(rule.as_str()) || sev == *rule
+            })
         })
         .collect();
     let ignored = original_count - kept.len();

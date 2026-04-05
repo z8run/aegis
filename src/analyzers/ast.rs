@@ -81,9 +81,7 @@ impl Analyzer for AstAnalyzer {
                 continue;
             }
 
-            parser
-                .set_language(&lang)
-                .expect("failed to load grammar");
+            parser.set_language(&lang).expect("failed to load grammar");
 
             let tree = match parser.parse(content, None) {
                 Some(t) => t,
@@ -702,8 +700,8 @@ fn check_member_expression(node: Node, source: &str, file: &str, findings: &mut 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
     use crate::registry::package::PackageMetadata;
+    use std::path::{Path, PathBuf};
 
     fn default_metadata() -> PackageMetadata {
         PackageMetadata {

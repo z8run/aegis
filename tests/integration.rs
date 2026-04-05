@@ -3,8 +3,8 @@
 //! These tests exercise the full analyzer pipeline, scoring system, output
 //! formatters, cache, and rules engine without making any network calls.
 
-use std::path::{Path, PathBuf};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use aegis_scan::analyzers::ast::AstAnalyzer;
 use aegis_scan::analyzers::install_scripts::InstallScriptAnalyzer;
@@ -151,8 +151,7 @@ eval(payload);
     let critical_eval: Vec<_> = findings
         .iter()
         .filter(|f| {
-            f.severity == Severity::Critical
-                && matches!(f.category, FindingCategory::CodeExecution)
+            f.severity == Severity::Critical && matches!(f.category, FindingCategory::CodeExecution)
         })
         .collect();
 
@@ -314,8 +313,7 @@ fn sample_report() -> AnalysisReport {
 fn json_output_is_valid_and_has_expected_fields() {
     let report = sample_report();
     let json_str = serde_json::to_string_pretty(&report).expect("should serialize");
-    let parsed: serde_json::Value =
-        serde_json::from_str(&json_str).expect("should be valid JSON");
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("should be valid JSON");
 
     assert_eq!(parsed["package_name"], "test-pkg");
     assert_eq!(parsed["version"], "2.0.0");
@@ -346,7 +344,9 @@ fn sarif_output_follows_v2_1_0_structure() {
     assert!(driver["rules"].is_array());
 
     // Results
-    let results = runs[0]["results"].as_array().expect("results should be array");
+    let results = runs[0]["results"]
+        .as_array()
+        .expect("results should be array");
     assert!(!results.is_empty());
 
     // Each result has required SARIF fields
@@ -438,10 +438,7 @@ fn expired_cache_entry_returns_none() {
         .unwrap_or(std::time::Duration::MAX);
     let ttl = std::time::Duration::from_secs(24 * 60 * 60);
 
-    assert!(
-        age > ttl,
-        "Backdated file should be older than TTL"
-    );
+    assert!(age > ttl, "Backdated file should be older than TTL");
     // In production code, get_cached_with_ttl would return None here.
 }
 
@@ -564,10 +561,7 @@ fn rules_respect_file_pattern_filter() {
         .filter(|f| f.title.contains("AEGIS-001"))
         .collect();
 
-    assert!(
-        aegis001.is_empty(),
-        "AEGIS-001 should not match .md files"
-    );
+    assert!(aegis001.is_empty(), "AEGIS-001 should not match .md files");
 }
 
 #[test]
@@ -654,17 +648,15 @@ exclude_paths: []
 
 #[test]
 fn full_pipeline_malicious_package() {
-    let files = vec![
-        (
-            PathBuf::from("index.js"),
-            r#"
+    let files = vec![(
+        PathBuf::from("index.js"),
+        r#"
 var payload = getRemotePayload();
 eval(payload);
 require('child_process').exec('rm -rf /');
 "#
-            .to_string(),
-        ),
-    ];
+        .to_string(),
+    )];
 
     let pkg = serde_json::json!({
         "name": "evil-pkg",
@@ -701,10 +693,7 @@ require('child_process').exec('rm -rf /');
 #[test]
 fn full_pipeline_sarif_round_trip() {
     // Run full pipeline, convert to SARIF, verify it parses back
-    let files = vec![(
-        PathBuf::from("index.js"),
-        "eval(dynamicCode);".to_string(),
-    )];
+    let files = vec![(PathBuf::from("index.js"), "eval(dynamicCode);".to_string())];
     let pkg = clean_package_json();
     let findings = run_all_analyzers(&files, &pkg);
     let report = build_report("roundtrip-pkg", "1.0.0", findings);

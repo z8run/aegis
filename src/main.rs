@@ -8,8 +8,7 @@ use colored::Colorize;
 
 use aegis_scan::cache;
 use aegis_scan::cli::{
-    clean_version_spec, collect_dependencies, parse_package_specifier, CacheCommands, Cli,
-    Commands,
+    clean_version_spec, collect_dependencies, parse_package_specifier, CacheCommands, Cli, Commands,
 };
 use aegis_scan::commands::install::run_install;
 use aegis_scan::ignore::{filter_ignored, load_ignore_files};
@@ -31,10 +30,7 @@ async fn main() {
     let cli = Cli::parse();
 
     // Disable colors when requested via flag, NO_COLOR env var, or non-TTY stdout.
-    if cli.no_color
-        || std::env::var_os("NO_COLOR").is_some()
-        || !std::io::stdout().is_terminal()
-    {
+    if cli.no_color || std::env::var_os("NO_COLOR").is_some() || !std::io::stdout().is_terminal() {
         colored::control::set_override(false);
     }
 
@@ -218,8 +214,8 @@ async fn run_check(
 
     if sarif_output {
         let sarif = output::sarif::generate_sarif(std::slice::from_ref(&report));
-        let sarif_str = serde_json::to_string_pretty(&sarif)
-            .context("failed to serialize SARIF output")?;
+        let sarif_str =
+            serde_json::to_string_pretty(&sarif).context("failed to serialize SARIF output")?;
         println!("{}", sarif_str);
     } else if json_output {
         output::json::print_json(&report);

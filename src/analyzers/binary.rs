@@ -133,10 +133,7 @@ impl BinaryAnalyzer {
         let mut findings = Vec::new();
 
         for path in &binary_paths {
-            let rel = path
-                .strip_prefix(package_dir)
-                .unwrap_or(path)
-                .to_path_buf();
+            let rel = path.strip_prefix(package_dir).unwrap_or(path).to_path_buf();
             let rel_str = rel.display().to_string();
 
             let ext = path
@@ -176,10 +173,7 @@ impl BinaryAnalyzer {
                     severity: Severity::Low,
                     category: FindingCategory::BinaryFile,
                     title: format!("Binary file detected: {}", rel_str),
-                    description: format!(
-                        "Package contains a binary file (.{})",
-                        ext
-                    ),
+                    description: format!("Package contains a binary file (.{})", ext),
                     file: Some(rel_str.clone()),
                     line: None,
                     snippet: None,

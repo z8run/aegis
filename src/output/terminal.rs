@@ -214,10 +214,7 @@ mod tests {
 
     #[test]
     fn risk_score_display_is_correct() {
-        assert_eq!(
-            format_risk_line(0.0, &RiskLabel::Clean),
-            "0.0/10 — CLEAN"
-        );
+        assert_eq!(format_risk_line(0.0, &RiskLabel::Clean), "0.0/10 — CLEAN");
         assert_eq!(
             format_risk_line(9.5, &RiskLabel::Critical),
             "9.5/10 — DO NOT INSTALL"

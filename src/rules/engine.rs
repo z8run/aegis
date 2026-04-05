@@ -145,9 +145,9 @@ impl Analyzer for RulesEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-    use crate::rules::loader::load_default_rules;
     use crate::registry::package::PackageMetadata;
+    use crate::rules::loader::load_default_rules;
+    use std::path::PathBuf;
 
     fn default_metadata() -> PackageMetadata {
         PackageMetadata {

@@ -92,9 +92,24 @@ const HALLUCINATION_PATTERNS: &[&str] = &[
 /// Known legitimate packages that are close in edit distance to top packages
 /// but are NOT typosquats (e.g., "reakt" is a real package).
 const KNOWN_LEGITIMATE: &[&str] = &[
-    "preact", "reakt", "rax", "inferno", "mithril", "chokidar", "chalk-cli",
-    "expressjs", "koa", "hapi", "fastify", "restify", "micro", "polka",
-    "morgan", "cors", "helmet", "pino-pretty",
+    "preact",
+    "reakt",
+    "rax",
+    "inferno",
+    "mithril",
+    "chokidar",
+    "chalk-cli",
+    "expressjs",
+    "koa",
+    "hapi",
+    "fastify",
+    "restify",
+    "micro",
+    "polka",
+    "morgan",
+    "cors",
+    "helmet",
+    "pino-pretty",
 ];
 
 /// Check if a package name is a known legitimate package (not a typosquat).
@@ -132,14 +147,22 @@ fn has_homoglyphs(name: &str, top: &str) -> bool {
             // Check common homoglyph pairs
             let is_homoglyph = matches!(
                 (a.to_ascii_lowercase(), b.to_ascii_lowercase()),
-                ('0', 'o') | ('o', '0') |
-                ('1', 'l') | ('l', '1') |
-                ('1', 'i') | ('i', '1') |
-                ('l', 'i') | ('i', 'l') |
-                ('m', 'n') | ('n', 'm') |
-                ('v', 'u') | ('u', 'v') |
-                ('d', 'b') | ('b', 'd') |
-                ('q', 'p') | ('p', 'q')
+                ('0', 'o')
+                    | ('o', '0')
+                    | ('1', 'l')
+                    | ('l', '1')
+                    | ('1', 'i')
+                    | ('i', '1')
+                    | ('l', 'i')
+                    | ('i', 'l')
+                    | ('m', 'n')
+                    | ('n', 'm')
+                    | ('v', 'u')
+                    | ('u', 'v')
+                    | ('d', 'b')
+                    | ('b', 'd')
+                    | ('q', 'p')
+                    | ('p', 'q')
             );
             if is_homoglyph {
                 has_glyph_swap = true;

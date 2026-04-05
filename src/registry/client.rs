@@ -156,10 +156,7 @@ mod tests {
     #[test]
     fn encode_deeply_scoped_package() {
         // Hypothetical double-slash; each slash should be encoded.
-        assert_eq!(
-            encode_package_name("@scope/sub/pkg"),
-            "@scope%2Fsub%2Fpkg"
-        );
+        assert_eq!(encode_package_name("@scope/sub/pkg"), "@scope%2Fsub%2Fpkg");
     }
 
     #[test]

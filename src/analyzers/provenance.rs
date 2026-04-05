@@ -72,7 +72,9 @@ fn is_safe_git_ref(s: &str) -> bool {
     if s.contains("..") || s.contains("://") || s.contains('@') {
         return false;
     }
-    if s.chars().any(|c| c.is_ascii_whitespace() || c.is_ascii_control()) {
+    if s.chars()
+        .any(|c| c.is_ascii_whitespace() || c.is_ascii_control())
+    {
         return false;
     }
     // Allow alphanumeric, hyphen, underscore, dot, slash (for refs like heads/main)
@@ -217,9 +219,7 @@ impl ProvenanceAnalyzer {
     pub fn new() -> Self {
         let mut headers = reqwest::header::HeaderMap::new();
         if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            if let Ok(value) =
-                reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
-            {
+            if let Ok(value) = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}")) {
                 headers.insert(reqwest::header::AUTHORIZATION, value);
             }
         }
@@ -311,9 +311,7 @@ impl ProvenanceAnalyzer {
             }
             Err(CompareError::ApiError(msg)) => {
                 // Non-fatal: log and move on.
-                warn!(
-                    "GitHub API error during provenance check for {pkg_name}@{version}: {msg}"
-                );
+                warn!("GitHub API error during provenance check for {pkg_name}@{version}: {msg}");
             }
         }
 
@@ -493,9 +491,7 @@ impl ProvenanceAnalyzer {
                     repo.repo,
                     file_list.join("\n"),
                 ),
-                file: npm_only_suspicious
-                    .first()
-                    .map(|f| f.to_string()),
+                file: npm_only_suspicious.first().map(|f| f.to_string()),
                 line: None,
                 snippet: None,
             });
@@ -588,8 +584,8 @@ fn is_expected_build_artifact(path: &str) -> bool {
 
     // Common build output directories
     let build_prefixes = [
-        "dist/", "build/", "lib/", "out/", "cjs/", "esm/", "umd/",
-        "es/", "module/", "_cjs/", "_esm/",
+        "dist/", "build/", "lib/", "out/", "cjs/", "esm/", "umd/", "es/", "module/", "_cjs/",
+        "_esm/",
     ];
 
     for prefix in &build_prefixes {
@@ -794,14 +790,21 @@ mod tests {
         let cases = vec![
             ("https://github.com/axios/axios", "axios", "axios"),
             ("https://github.com/facebook/react.git", "facebook", "react"),
-            ("git+https://github.com/lodash/lodash.git", "lodash", "lodash"),
+            (
+                "git+https://github.com/lodash/lodash.git",
+                "lodash",
+                "lodash",
+            ),
             ("github:chalk/chalk", "chalk", "chalk"),
-            ("git@github.com:expressjs/express.git", "expressjs", "express"),
+            (
+                "git@github.com:expressjs/express.git",
+                "expressjs",
+                "express",
+            ),
         ];
         for (url, expected_owner, expected_repo) in cases {
             let v = serde_json::json!(url);
-            let repo = parse_github_repo(&v)
-                .unwrap_or_else(|| panic!("Expected to parse {url}"));
+            let repo = parse_github_repo(&v).unwrap_or_else(|| panic!("Expected to parse {url}"));
             assert_eq!(repo.owner, expected_owner, "owner mismatch for {url}");
             assert_eq!(repo.repo, expected_repo, "repo mismatch for {url}");
         }

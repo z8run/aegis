@@ -225,10 +225,7 @@ mod tests {
         assert_eq!(maintainers[1].name.as_deref(), Some("bob"));
         assert!(maintainers[1].email.is_none());
         assert!(maintainers[2].name.is_none());
-        assert_eq!(
-            maintainers[2].email.as_deref(),
-            Some("charlie@example.com")
-        );
+        assert_eq!(maintainers[2].email.as_deref(), Some("charlie@example.com"));
     }
 
     #[test]

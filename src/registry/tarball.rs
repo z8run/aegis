@@ -132,17 +132,16 @@ fn safe_unpack<R: std::io::Read>(archive: &mut Archive<R>, dest: &Path) -> Resul
 /// intentionally does NOT resolve symlinks so it works before extraction.
 fn normalised_starts_with(child: &Path, parent: &Path) -> bool {
     let normalise = |p: &Path| -> PathBuf {
-        p.components()
-            .fold(PathBuf::new(), |mut acc, c| {
-                match c {
-                    Component::ParentDir => {
-                        acc.pop();
-                    }
-                    Component::CurDir => {}
-                    other => acc.push(other),
+        p.components().fold(PathBuf::new(), |mut acc, c| {
+            match c {
+                Component::ParentDir => {
+                    acc.pop();
                 }
-                acc
-            })
+                Component::CurDir => {}
+                other => acc.push(other),
+            }
+            acc
+        })
     };
     normalise(child).starts_with(normalise(parent))
 }
