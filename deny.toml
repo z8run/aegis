@@ -7,19 +7,16 @@ all-features = true
 
 # -- Advisories --
 [advisories]
-db-path = "~/.cargo/advisory-db"
-db-urls = ["https://github.com/rustsec/advisory-db"]
-vulnerability = "deny"
-unmaintained = "warn"
-yanked = "warn"
-notice = "warn"
+version = 2
+ignore = []
 
 # -- Licenses --
 [licenses]
-unlicensed = "deny"
+version = 2
 allow = [
     "MIT",
     "Apache-2.0",
+    "MPL-2.0",
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
@@ -28,14 +25,12 @@ allow = [
     "Zlib",
     "OpenSSL",
 ]
-copyleft = "deny"
 confidence-threshold = 0.8
 
 # -- Bans (duplicate crate detection) --
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"
-highlight = "all"
 
 # -- Sources --
 [sources]

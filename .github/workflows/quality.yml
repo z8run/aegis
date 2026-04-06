@@ -107,7 +107,7 @@ jobs:
         run: cargo install cargo-semver-checks --locked
 
       - name: Check semver compliance
-        run: cargo semver-checks check-release
+        run: cargo semver-checks check-release --default-baseline-rev v0.3.0
 
   coverage:
     name: Code Coverage
